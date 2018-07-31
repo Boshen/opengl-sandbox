@@ -77,25 +77,41 @@ bufferOffset = plusPtr nullPtr . fromIntegral
 
 initResources :: IO Descriptor
 initResources = do
+
+  -- vao
   triangles <- GL.genObjectName
   GL.bindVertexArrayObject $= Just triangles
+
+  -- vbo
   arrayBuffer <- GL.genObjectName
   GL.bindBuffer GL.ArrayBuffer $= Just arrayBuffer
   withArray vertices $ \ptr -> do
     let size = fromIntegral (numVertices * sizeOf (head vertices))
     GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
+
+  -- program
   program <-
     loadShaders
       [ ShaderInfo GL.VertexShader (FileSource "./app/shader.vert")
       , ShaderInfo GL.FragmentShader (FileSource "./app/shader.frag")
       ]
   GL.currentProgram $= Just program
+
+  -- vertex attribute
   let firstIndex = 0
-      vPosition = GL.AttribLocation 0
-  GL.vertexAttribPointer vPosition $=
+      aPos = GL.AttribLocation 0
+      size = fromIntegral . sizeOf . head $ vertices
+  GL.vertexAttribPointer aPos $=
     ( GL.ToFloat
-    , GL.VertexArrayDescriptor 2 GL.Float 0 (bufferOffset firstIndex))
-  GL.vertexAttribArray vPosition $= GL.Enabled
+    , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset firstIndex))
+  GL.vertexAttribArray aPos $= GL.Enabled
+
+  -- color attribute
+  let aColor = GL.AttribLocation 1
+  GL.vertexAttribPointer aColor $=
+    ( GL.ToFloat
+    , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset (size * 3)))
+  GL.vertexAttribArray aColor $= GL.Enabled
   return $ Descriptor triangles firstIndex (fromIntegral numVertices)
 
 draw :: Descriptor -> IO ()
@@ -103,14 +119,12 @@ draw (Descriptor triangles firstIndex numVertices) = do
   GL.bindVertexArrayObject $= Just triangles
   GL.drawArrays GL.Triangles firstIndex numVertices
 
-vertices :: [GL.Vertex2 GL.GLfloat]
+vertices :: [Float]
 vertices =
-  [ GL.Vertex2 (-0.90) (-0.90) -- Triangle 1
-  , GL.Vertex2 0.85 (-0.90)
-  , GL.Vertex2 (-0.90) 0.85
-  -- , GL.Vertex2 0.90 (-0.85) -- Triangle 2
-  -- , GL.Vertex2 0.90 0.90
-  -- , GL.Vertex2 (-0.85) 0.90
+  [
+     0.5, -0.5, 0.0,  1.0, 0.0, 0.0,
+    -0.5, -0.5, 0.0,  0.0, 1.0, 0.0,
+     0.0,  0.5, 0.0,  0.0, 0.0, 1.0
   ]
 
 numVertices = length vertices

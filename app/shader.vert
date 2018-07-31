@@ -1,9 +1,12 @@
 #version 410 core
 
-layout(location = 0) in vec4 vPosition;
+layout (location = 0) in vec4 aPos;
+layout (location = 1) in vec4 aColor;
 
-void
-main()
+out vec4 ourColor;
+
+void main()
 {
-   gl_Position = vPosition;
+   gl_Position = aPos;
+   ourColor = aColor;
 }
