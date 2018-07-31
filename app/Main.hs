@@ -24,6 +24,7 @@ data Descriptor =
   Descriptor GL.VertexArrayObject
              GL.ArrayIndex
              GL.NumArrayIndices
+             GL.UniformLocation
 
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (640, 480)
@@ -95,7 +96,6 @@ initResources = do
       [ ShaderInfo GL.VertexShader (FileSource "./app/shader.vert")
       , ShaderInfo GL.FragmentShader (FileSource "./app/shader.frag")
       ]
-  GL.currentProgram $= Just program
 
   -- vertex attribute
   let firstIndex = 0
@@ -112,10 +112,17 @@ initResources = do
     ( GL.ToFloat
     , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset (size * 3)))
   GL.vertexAttribArray aColor $= GL.Enabled
-  return $ Descriptor triangles firstIndex (fromIntegral numVertices)
+
+  -- uniform time
+  timeLocation <- GL.uniformLocation program "time"
+
+  GL.currentProgram $= Just program
+  return $ Descriptor triangles firstIndex (fromIntegral numVertices) timeLocation
 
 draw :: Descriptor -> IO ()
-draw (Descriptor triangles firstIndex numVertices) = do
+draw (Descriptor triangles firstIndex numVertices timeLocation) = do
+  time <- SDL.time :: IO Float
+  GL.uniform timeLocation $= time
   GL.bindVertexArrayObject $= Just triangles
   GL.drawArrays GL.Triangles firstIndex numVertices
 
