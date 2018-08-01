@@ -23,8 +23,8 @@ import qualified SDL
 import           SDL.Vect
 import           SDL.Video.OpenGL          (Mode (Normal))
 
+import           Camera
 import           LoadShaders
-import Camera
 
 data Uniforms = Uniforms
   { timeLocation       :: GL.UniformLocation
@@ -69,12 +69,12 @@ main = do
   SDL.showWindow window
   SDL.glCreateContext window
   discriptor <- initResources
-  onDisplay window discriptor initialCamera
+  onDisplay window discriptor initialCamera 0
   SDL.destroyWindow window
   SDL.quit
 
-onDisplay :: SDL.Window -> Descriptor -> Camera -> IO ()
-onDisplay window descriptor camera = do
+onDisplay :: SDL.Window -> Descriptor -> Camera -> Float -> IO ()
+onDisplay window descriptor camera lastFrame = do
   GL.clearColor $= GL.Color4 1 1 1 1
   GL.clear [GL.ColorBuffer, GL.DepthBuffer]
   GL.viewport $=
@@ -84,9 +84,11 @@ onDisplay window descriptor camera = do
   draw camera descriptor
   SDL.glSwapWindow window
   events <- SDL.pollEvents
+  currentFrame <- SDL.time
   let quit = elem SDL.QuitEvent $ map SDL.eventPayload events
-      updatedCamera = updateCamera camera events
-  unless quit (onDisplay window descriptor updatedCamera)
+      deltaTime = currentFrame - lastFrame
+      updatedCamera = updateCamera camera events deltaTime
+  unless quit (onDisplay window descriptor updatedCamera currentFrame)
 
 bufferOffset :: Integral a => a -> Ptr b
 bufferOffset = plusPtr nullPtr . fromIntegral

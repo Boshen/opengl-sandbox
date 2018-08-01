@@ -23,19 +23,17 @@ data MoveAction
   | MoveRight
   | MoveHalt
 
-cameraSpeed :: Float
-cameraSpeed = 0.1
-
 initialCamera :: Camera
 initialCamera = Camera (V3 0 0 3) (V3 0 0 (-1)) (V3 1 0 0)
 
-updateCamera :: Camera -> [Event] -> Camera
-updateCamera camera events =
-  events & map eventToAction & foldl' addCamera camera
+updateCamera :: Camera -> [Event] -> Float -> Camera
+updateCamera camera events deltaTime =
+  events & map eventToAction & foldl' (addCamera deltaTime) camera
 
-addCamera :: Camera -> MoveAction -> Camera
-addCamera camera@(Camera pos front up) event = Camera p front up
+addCamera :: Float -> Camera -> MoveAction -> Camera
+addCamera deltaTime camera@(Camera pos front up) event = Camera p front up
   where
+    cameraSpeed = 2.5 * deltaTime
     p =
       case event of
         MoveUp    -> pos ^+^ (up ^* cameraSpeed)
