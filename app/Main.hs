@@ -16,6 +16,7 @@ import           System.IO
 import           Control.Lens              ((&), (.~))
 import qualified Data.Foldable             as Foldable
 import qualified Graphics.Rendering.OpenGL as GL
+import           Linear                    ((^+^))
 import qualified Linear
 import           SDL                       (($=))
 import qualified SDL
@@ -23,6 +24,7 @@ import           SDL.Vect
 import           SDL.Video.OpenGL          (Mode (Normal))
 
 import           LoadShaders
+import Camera
 
 data Uniforms = Uniforms
   { timeLocation       :: GL.UniformLocation
@@ -36,7 +38,6 @@ data Descriptor =
              GL.ArrayIndex
              GL.NumArrayIndices
              Uniforms
-
 
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (640, 480)
@@ -68,23 +69,24 @@ main = do
   SDL.showWindow window
   SDL.glCreateContext window
   discriptor <- initResources
-  onDisplay window discriptor
+  onDisplay window discriptor initialCamera
   SDL.destroyWindow window
   SDL.quit
 
-onDisplay :: SDL.Window -> Descriptor -> IO ()
-onDisplay window descriptor = do
+onDisplay :: SDL.Window -> Descriptor -> Camera -> IO ()
+onDisplay window descriptor camera = do
   GL.clearColor $= GL.Color4 1 1 1 1
   GL.clear [GL.ColorBuffer, GL.DepthBuffer]
   GL.viewport $=
     ( GL.Position 0 0
     , GL.Size (fromIntegral screenWidth) (fromIntegral screenHeight))
 
-  draw descriptor
+  draw camera descriptor
   SDL.glSwapWindow window
   events <- SDL.pollEvents
   let quit = elem SDL.QuitEvent $ map SDL.eventPayload events
-  unless quit (onDisplay window descriptor)
+      updatedCamera = updateCamera camera events
+  unless quit (onDisplay window descriptor updatedCamera)
 
 bufferOffset :: Integral a => a -> Ptr b
 bufferOffset = plusPtr nullPtr . fromIntegral
@@ -139,13 +141,14 @@ initResources = do
   let uniforms = Uniforms time model view projection
   return $ Descriptor triangles firstIndex (fromIntegral numVertices) uniforms
 
-draw :: Descriptor -> IO ()
-draw (Descriptor triangles firstIndex numVertices uniforms) = do
+draw :: Camera -> Descriptor -> IO ()
+draw (Camera cameraPos cameraFront cameraUp) (Descriptor triangles firstIndex numVertices uniforms) = do
   seconds <- SDL.time :: IO Float
 
   -- set model view project
-  let model =   Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0.5 0) seconds
-      view = (Linear.identity :: Linear.M44 Float) & Linear.translation .~ V3 0 0 (-3.0)
+  let
+      view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
+      model =   Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0 0) seconds
       projection = Linear.perspective (45.0 * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
 
   glModelMatrix <- toGlMatrix model
