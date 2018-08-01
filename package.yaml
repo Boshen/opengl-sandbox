@@ -26,6 +26,8 @@ dependencies:
 - bytestring
 - sdl2
 - vector
+- linear
+- lens
 
 library:
   source-dirs: src

@@ -6,25 +6,37 @@ import           Control.Monad
 import qualified Data.ByteString           as BS
 import qualified Data.Vector.Storable      as V
 import           Foreign.C.Types
+import           Foreign.ForeignPtr
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           Foreign.Storable
-import           SDL.Vect
 import           System.Exit               (exitFailure)
 import           System.IO
 
+import           Control.Lens              ((&), (.~))
+import qualified Data.Foldable             as Foldable
 import qualified Graphics.Rendering.OpenGL as GL
+import qualified Linear
 import           SDL                       (($=))
 import qualified SDL
+import           SDL.Vect
 import           SDL.Video.OpenGL          (Mode (Normal))
 
 import           LoadShaders
+
+data Uniforms = Uniforms
+  { timeLocation       :: GL.UniformLocation
+  , modelLocation      :: GL.UniformLocation
+  , viewLocation       :: GL.UniformLocation
+  , projectionLocation :: GL.UniformLocation
+  }
 
 data Descriptor =
   Descriptor GL.VertexArrayObject
              GL.ArrayIndex
              GL.NumArrayIndices
-             GL.UniformLocation
+             Uniforms
+
 
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (640, 480)
@@ -63,10 +75,11 @@ main = do
 onDisplay :: SDL.Window -> Descriptor -> IO ()
 onDisplay window descriptor = do
   GL.clearColor $= GL.Color4 1 1 1 1
-  GL.clear [GL.ColorBuffer]
+  GL.clear [GL.ColorBuffer, GL.DepthBuffer]
   GL.viewport $=
     ( GL.Position 0 0
     , GL.Size (fromIntegral screenWidth) (fromIntegral screenHeight))
+
   draw descriptor
   SDL.glSwapWindow window
   events <- SDL.pollEvents
@@ -78,6 +91,9 @@ bufferOffset = plusPtr nullPtr . fromIntegral
 
 initResources :: IO Descriptor
 initResources = do
+
+  -- glEnable(GL_DEPTH_TEST)
+  GL.depthFunc $= Just GL.Less
 
   -- vao
   triangles <- GL.genObjectName
@@ -103,35 +119,103 @@ initResources = do
       size = fromIntegral . sizeOf . head $ vertices
   GL.vertexAttribPointer aPos $=
     ( GL.ToFloat
-    , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset firstIndex))
+    , GL.VertexArrayDescriptor 3 GL.Float (5 * size) (bufferOffset firstIndex))
   GL.vertexAttribArray aPos $= GL.Enabled
 
   -- color attribute
-  let aColor = GL.AttribLocation 1
-  GL.vertexAttribPointer aColor $=
-    ( GL.ToFloat
-    , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset (size * 3)))
-  GL.vertexAttribArray aColor $= GL.Enabled
+  -- let aColor = GL.AttribLocation 1
+  -- GL.vertexAttribPointer aColor $=
+    -- ( GL.ToFloat
+    -- , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset (size * 3)))
+  -- GL.vertexAttribArray aColor $= GL.Enabled
 
   -- uniform time
-  timeLocation <- GL.uniformLocation program "time"
+  time <- GL.uniformLocation program "time"
+  model <- GL.uniformLocation program "model"
+  view <- GL.uniformLocation program "view"
+  projection <- GL.uniformLocation program "projection"
 
   GL.currentProgram $= Just program
-  return $ Descriptor triangles firstIndex (fromIntegral numVertices) timeLocation
+  let uniforms = Uniforms time model view projection
+  return $ Descriptor triangles firstIndex (fromIntegral numVertices) uniforms
 
 draw :: Descriptor -> IO ()
-draw (Descriptor triangles firstIndex numVertices timeLocation) = do
-  time <- SDL.time :: IO Float
-  GL.uniform timeLocation $= time
+draw (Descriptor triangles firstIndex numVertices uniforms) = do
+  seconds <- SDL.time :: IO Float
+
+  -- set model view project
+  let model =   Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0.5 0) seconds
+      view = (Linear.identity :: Linear.M44 Float) & Linear.translation .~ V3 0 0 (-3.0)
+      projection = Linear.perspective (45.0 * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
+
+  glModelMatrix <- toGlMatrix model
+  GL.uniform (modelLocation uniforms) $= glModelMatrix
+
+  glViewMatrix <- toGlMatrix view
+  GL.uniform (viewLocation uniforms) $= glViewMatrix
+
+  glProjectionMatrix <- toGlMatrix projection
+  GL.uniform (projectionLocation uniforms) $= glProjectionMatrix
+
+  -- set time
+  GL.uniform (timeLocation uniforms) $= seconds
+
+  -- draw triangle
   GL.bindVertexArrayObject $= Just triangles
   GL.drawArrays GL.Triangles firstIndex numVertices
 
 vertices :: [Float]
 vertices =
   [
-     0.5, -0.5, 0.0,  1.0, 0.0, 0.0,
-    -0.5, -0.5, 0.0,  0.0, 1.0, 0.0,
-     0.0,  0.5, 0.0,  0.0, 0.0, 1.0
+      -0.5, -0.5, -0.5,  0.0, 0.0,
+     0.5, -0.5, -0.5,  1.0, 0.0,
+     0.5,  0.5, -0.5,  1.0, 1.0,
+     0.5,  0.5, -0.5,  1.0, 1.0,
+    -0.5,  0.5, -0.5,  0.0, 1.0,
+    -0.5, -0.5, -0.5,  0.0, 0.0,
+
+    -0.5, -0.5,  0.5,  0.0, 0.0,
+     0.5, -0.5,  0.5,  1.0, 0.0,
+     0.5,  0.5,  0.5,  1.0, 1.0,
+     0.5,  0.5,  0.5,  1.0, 1.0,
+    -0.5,  0.5,  0.5,  0.0, 1.0,
+    -0.5, -0.5,  0.5,  0.0, 0.0,
+
+    -0.5,  0.5,  0.5,  1.0, 0.0,
+    -0.5,  0.5, -0.5,  1.0, 1.0,
+    -0.5, -0.5, -0.5,  0.0, 1.0,
+    -0.5, -0.5, -0.5,  0.0, 1.0,
+    -0.5, -0.5,  0.5,  0.0, 0.0,
+    -0.5,  0.5,  0.5,  1.0, 0.0,
+
+     0.5,  0.5,  0.5,  1.0, 0.0,
+     0.5,  0.5, -0.5,  1.0, 1.0,
+     0.5, -0.5, -0.5,  0.0, 1.0,
+     0.5, -0.5, -0.5,  0.0, 1.0,
+     0.5, -0.5,  0.5,  0.0, 0.0,
+     0.5,  0.5,  0.5,  1.0, 0.0,
+
+    -0.5, -0.5, -0.5,  0.0, 1.0,
+     0.5, -0.5, -0.5,  1.0, 1.0,
+     0.5, -0.5,  0.5,  1.0, 0.0,
+     0.5, -0.5,  0.5,  1.0, 0.0,
+    -0.5, -0.5,  0.5,  0.0, 0.0,
+    -0.5, -0.5, -0.5,  0.0, 1.0,
+
+    -0.5,  0.5, -0.5,  0.0, 1.0,
+     0.5,  0.5, -0.5,  1.0, 1.0,
+     0.5,  0.5,  0.5,  1.0, 0.0,
+     0.5,  0.5,  0.5,  1.0, 0.0,
+    -0.5,  0.5,  0.5,  0.0, 0.0,
+    -0.5,  0.5, -0.5,  0.0, 1.0
   ]
 
 numVertices = length vertices
+
+toGlMatrix :: M44 Float -> IO (GL.GLmatrix GL.GLfloat)
+toGlMatrix mat =
+  GL.withNewMatrix GL.RowMajor $ \glPtr ->
+    zipWithM_
+      (pokeElemOff glPtr)
+      [0 ..]
+      (concat $ Foldable.toList <$> Foldable.toList mat)
