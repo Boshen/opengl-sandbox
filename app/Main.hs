@@ -40,7 +40,7 @@ data Descriptor =
              Uniforms
 
 screenWidth, screenHeight :: CInt
-(screenWidth, screenHeight) = (640, 480)
+(screenWidth, screenHeight) = (800, 600)
 
 openGLConfig :: SDL.OpenGLConfig
 openGLConfig =
@@ -56,6 +56,7 @@ main :: IO ()
 main = do
   SDL.initialize [SDL.InitVideo]
   SDL.HintRenderScaleQuality $= SDL.ScaleLinear
+  -- SDL.setMouseLocationMode SDL.RelativeLocation
   do renderQuality <- SDL.get SDL.HintRenderScaleQuality
      when (renderQuality /= SDL.ScaleLinear) $
        putStrLn "Warning: Linear texture filtering not enabled!"
@@ -144,7 +145,7 @@ initResources = do
   return $ Descriptor triangles firstIndex (fromIntegral numVertices) uniforms
 
 draw :: Camera -> Descriptor -> IO ()
-draw (Camera cameraPos cameraFront cameraUp) (Descriptor triangles firstIndex numVertices uniforms) = do
+draw camera@(Camera cameraPos cameraFront cameraUp yaw pitch) (Descriptor triangles firstIndex numVertices uniforms) = do
   seconds <- SDL.time :: IO Float
 
   -- set model view project
