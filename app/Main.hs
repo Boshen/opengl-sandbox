@@ -15,8 +15,10 @@ import           System.IO
 
 import           Control.Lens              ((&), (.~))
 import qualified Data.Foldable             as Foldable
+import           Data.Map.Strict           (Map, (!))
+import qualified Data.Map.Strict           as Map
 import qualified Graphics.Rendering.OpenGL as GL
-import           Linear                    ((^+^))
+import           Linear                    ((!*!), (^+^))
 import qualified Linear
 import           SDL                       (($=))
 import qualified SDL
@@ -27,18 +29,15 @@ import           Action
 import           Camera
 import           LoadShaders
 
-data Uniforms = Uniforms
-  { timeLocation       :: GL.UniformLocation
-  , modelLocation      :: GL.UniformLocation
-  , viewLocation       :: GL.UniformLocation
-  , projectionLocation :: GL.UniformLocation
+data GLData = GLData
+  { glProgram  :: GL.Program
+  , glVAO      :: GL.VertexArrayObject
+  , glIndex    :: GL.ArrayIndex
+  , glIndices  :: GL.NumArrayIndices
+  , glUniforms :: Map String GL.UniformLocation
   }
 
-data Descriptor =
-  Descriptor GL.VertexArrayObject
-             GL.ArrayIndex
-             GL.NumArrayIndices
-             Uniforms
+type GLDataMap = Map String GLData
 
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (800, 600)
@@ -75,15 +74,15 @@ main = do
   SDL.destroyWindow window
   SDL.quit
 
-onDisplay :: SDL.Window -> Descriptor -> Camera -> Float -> IO ()
-onDisplay window descriptor camera lastFrame = do
-  GL.clearColor $= GL.Color4 1 1 1 1
+onDisplay :: SDL.Window -> GLDataMap -> Camera -> Float -> IO ()
+onDisplay window glDataMap camera lastFrame = do
+  GL.clearColor $= GL.Color4 0.1 0.1 0.1 1
   GL.clear [GL.ColorBuffer, GL.DepthBuffer]
   GL.viewport $=
     ( GL.Position 0 0
     , GL.Size (fromIntegral screenWidth) (fromIntegral screenHeight))
 
-  draw camera descriptor
+  draw camera glDataMap
   SDL.glSwapWindow window
   events <- SDL.pollEvents
   currentFrame <- SDL.time
@@ -91,20 +90,27 @@ onDisplay window descriptor camera lastFrame = do
       quit = QuitProgram `elem` actions
       deltaTime = currentFrame - lastFrame
       updatedCamera = updateCamera camera actions deltaTime
-  unless quit (onDisplay window descriptor updatedCamera currentFrame)
+  unless quit (onDisplay window glDataMap updatedCamera currentFrame)
 
 bufferOffset :: Integral a => a -> Ptr b
 bufferOffset = plusPtr nullPtr . fromIntegral
 
-initResources :: IO Descriptor
+initResources :: IO GLDataMap
 initResources = do
 
   -- glEnable(GL_DEPTH_TEST)
   GL.depthFunc $= Just GL.Less
 
+  cubeProgram <- makeCubeProgram
+  lampProgram <- makeLampProgram
+
+  return $ Map.fromList [("cube", cubeProgram), ("lamp", lampProgram)]
+
+makeCubeProgram :: IO GLData
+makeCubeProgram = do
   -- vao
-  triangles <- GL.genObjectName
-  GL.bindVertexArrayObject $= Just triangles
+  cube <- GL.genObjectName
+  GL.bindVertexArrayObject $= Just cube
 
   -- vbo
   arrayBuffer <- GL.genObjectName
@@ -113,11 +119,11 @@ initResources = do
     let size = fromIntegral (numVertices * sizeOf (head vertices))
     GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
 
-  -- program
+  -- load shader
   program <-
     loadShaders
       [ ShaderInfo GL.VertexShader (FileSource "./app/shader.vert")
-      , ShaderInfo GL.FragmentShader (FileSource "./app/shader.frag")
+      , ShaderInfo GL.FragmentShader (FileSource "./app/cube.frag")
       ]
 
   -- vertex attribute
@@ -129,49 +135,91 @@ initResources = do
     , GL.VertexArrayDescriptor 3 GL.Float (5 * size) (bufferOffset firstIndex))
   GL.vertexAttribArray aPos $= GL.Enabled
 
-  -- color attribute
-  -- let aColor = GL.AttribLocation 1
-  -- GL.vertexAttribPointer aColor $=
-    -- ( GL.ToFloat
-    -- , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset (size * 3)))
-  -- GL.vertexAttribArray aColor $= GL.Enabled
+  uniforms <- makeUniforms program [ "model" , "view" , "projection" , "objectColor" , "lightColor" ]
 
-  -- uniform time
-  time <- GL.uniformLocation program "time"
-  model <- GL.uniformLocation program "model"
-  view <- GL.uniformLocation program "view"
-  projection <- GL.uniformLocation program "projection"
+  return $ GLData program cube firstIndex (fromIntegral numVertices) uniforms
 
-  GL.currentProgram $= Just program
-  let uniforms = Uniforms time model view projection
-  return $ Descriptor triangles firstIndex (fromIntegral numVertices) uniforms
+makeLampProgram :: IO GLData
+makeLampProgram = do
+  -- vao
+  lamp <- GL.genObjectName
+  GL.bindVertexArrayObject $= Just lamp
 
-draw :: Camera -> Descriptor -> IO ()
-draw camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (Descriptor triangles firstIndex numVertices uniforms) = do
+  -- vbo
+  arrayBuffer <- GL.genObjectName
+  GL.bindBuffer GL.ArrayBuffer $= Just arrayBuffer
+  withArray vertices $ \ptr -> do
+    let size = fromIntegral (numVertices * sizeOf (head vertices))
+    GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
+
+  -- load shader
+  program <-
+    loadShaders
+      [ ShaderInfo GL.VertexShader (FileSource "./app/shader.vert")
+      , ShaderInfo GL.FragmentShader (FileSource "./app/lamp.frag")
+      ]
+
+  -- vertex attribute
+  let firstIndex = 0
+      aPos = GL.AttribLocation 0
+      size = fromIntegral . sizeOf . head $ vertices
+  GL.vertexAttribPointer aPos $=
+    ( GL.ToFloat
+    , GL.VertexArrayDescriptor 3 GL.Float (5 * size) (bufferOffset firstIndex))
+  GL.vertexAttribArray aPos $= GL.Enabled
+
+  uniforms <- makeUniforms program [ "model" , "view" , "projection" ]
+
+  return $ GLData program lamp firstIndex (fromIntegral numVertices) uniforms
+
+draw :: Camera -> GLDataMap -> IO ()
+draw camera glDataMap = do
+  drawCube camera (glDataMap ! "cube")
+  drawLamp camera (glDataMap ! "lamp")
+
+drawCube :: Camera -> GLData -> IO ()
+drawCube
+  (Camera cameraPos cameraFront cameraUp yaw pitch fov)
+  (GLData program vao index indices uniforms) = do
   seconds <- SDL.time :: IO Float
-
-  print camera
-  -- set model view project
   let
       view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
-      model =   Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0 0) seconds
+      model = Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0 0) seconds
       projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
 
   glModelMatrix <- toGlMatrix model
-  GL.uniform (modelLocation uniforms) $= glModelMatrix
-
   glViewMatrix <- toGlMatrix view
-  GL.uniform (viewLocation uniforms) $= glViewMatrix
-
   glProjectionMatrix <- toGlMatrix projection
-  GL.uniform (projectionLocation uniforms) $= glProjectionMatrix
 
-  -- set time
-  GL.uniform (timeLocation uniforms) $= seconds
+  GL.currentProgram $= Just program
+  GL.uniform (uniforms ! "model") $= glModelMatrix
+  GL.uniform (uniforms ! "view") $= glViewMatrix
+  GL.uniform (uniforms ! "projection") $= glProjectionMatrix
+  GL.uniform (uniforms ! "objectColor") $= (GL.Vertex3 1 0.5 0.31 :: GL.Vertex3 Float)
+  GL.uniform (uniforms ! "lightColor") $= (GL.Vertex3 1 1 1 :: GL.Vertex3 Float)
+  GL.bindVertexArrayObject $= Just vao
+  GL.drawArrays GL.Triangles index indices
 
-  -- draw triangle
-  GL.bindVertexArrayObject $= Just triangles
-  GL.drawArrays GL.Triangles firstIndex numVertices
+drawLamp  :: Camera -> GLData -> IO ()
+drawLamp
+  (Camera cameraPos cameraFront cameraUp yaw pitch fov)
+  (GLData program vao index indices uniforms) = do
+  seconds <- SDL.time :: IO Float
+  let
+      view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
+      model = Linear.mkTransformationMat (Linear.identity :: M33 Float) (V3 1.2 1 2) !*! Linear.scaled (V4 0.1 0.1 0.1 1)
+      projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
+
+  glModelMatrix <- toGlMatrix model
+  glViewMatrix <- toGlMatrix view
+  glProjectionMatrix <- toGlMatrix projection
+
+  GL.currentProgram $= Just program
+  GL.uniform (uniforms ! "model") $= glModelMatrix
+  GL.uniform (uniforms ! "view") $= glViewMatrix
+  GL.uniform (uniforms ! "projection") $= glProjectionMatrix
+  GL.bindVertexArrayObject $= Just vao
+  GL.drawArrays GL.Triangles index indices
 
 vertices :: [Float]
 vertices =
@@ -228,3 +276,11 @@ toGlMatrix mat =
       (pokeElemOff glPtr)
       [0 ..]
       (concat $ Foldable.toList <$> Foldable.toList mat)
+
+makeUniforms :: GL.Program -> [String] -> IO (Map String GL.UniformLocation)
+makeUniforms program names = Map.fromList <$> mapM makeUniform names
+  where
+    makeUniform name = do
+      uniform <- GL.uniformLocation program name
+      return (name, uniform)
+

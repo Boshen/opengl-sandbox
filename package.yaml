@@ -9,7 +9,8 @@ copyright:           "2018 Author name here"
 extra-source-files:
 - README.md
 - app/shader.vert
-- app/shader.frag
+- app/cube.frag
+- app/lamp.frag
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -28,6 +29,7 @@ dependencies:
 - vector
 - linear
 - lens
+- containers
 
 library:
   source-dirs: src
