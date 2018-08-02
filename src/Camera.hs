@@ -56,8 +56,8 @@ addCamera deltaTime camera@(Camera pos front up yaw pitch fov) event =
                     (cos radPitch * cos radYaw)
                     (sin radPitch)
                     (sin radYaw * cos radPitch)
-        _ -> Camera pos' front up yaw pitch fov
-          where pos' =
+        _ -> Camera (V3 x 0 z) front up yaw pitch fov -- set y = 0 to keep at ground level
+          where (V3 x y z) =
                   case event of
                     MoveUp -> pos ^+^ (front ^* cameraSpeed)
                     MoveDown -> pos ^-^ (front ^* cameraSpeed)
