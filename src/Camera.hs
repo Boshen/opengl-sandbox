@@ -10,7 +10,7 @@ import           Linear
 import           SDL.Event
 import           SDL.Input.Keyboard
 
-import           Actions
+import           Action
 
 data Camera = Camera
   { cameraPos   :: V3 Float
@@ -18,10 +18,19 @@ data Camera = Camera
   , cameraUp    :: V3 Float
   , cameraYaw   :: Float
   , cameraPitch :: Float
+  , cameraFov   :: Float
   } deriving (Show)
 
 initialCamera :: Camera
-initialCamera = Camera (V3 0 0 3) (V3 0 0 (-1)) (V3 0 1 0) (-90) 0
+initialCamera =
+  Camera
+    { cameraPos = V3 0 0 3
+    , cameraFront = V3 0 0 (-1)
+    , cameraUp = V3 0 1 0
+    , cameraYaw = -90
+    , cameraPitch = 0
+    , cameraFov = 45
+    }
 
 sensitivity = 0.05
 
@@ -30,29 +39,31 @@ updateCamera camera actions deltaTime =
   foldl' (addCamera deltaTime) camera actions
 
 addCamera :: Float -> Camera -> ProgramAction -> Camera
-addCamera deltaTime camera@(Camera pos front up yaw pitch) event =
-  case event of
-    ResetPosition -> initialCamera
-    MoveMouse dx dy -> Camera pos front' up yaw' pitch'
-      where yaw' = yaw + dx * sensitivity
-            pitch' = max (-89) . min 89 $ pitch + dy * sensitivity
-            radYaw = radians yaw'
-            radPitch = radians pitch
-            front' =
-              signorm $
-              V3
-                (cos radPitch * cos radYaw)
-                (sin radPitch)
-                (sin radYaw * cos radPitch)
-    _ -> Camera pos' front up yaw pitch
-      where cameraSpeed = 2.5 * deltaTime
-            pos' =
-              case event of
-                MoveUp    -> pos ^+^ (front ^* cameraSpeed)
-                MoveDown  -> pos ^-^ (front ^* cameraSpeed)
-                MoveLeft  -> pos ^+^ signorm (cross front up) ^* cameraSpeed
-                MoveRight -> pos ^-^ signorm (cross front up) ^* cameraSpeed
-                MoveHalt  -> pos
-                _         -> pos
+addCamera deltaTime camera@(Camera pos front up yaw pitch fov) event =
+  let cameraSpeed = 2.5 * deltaTime
+   in case event of
+        ResetPosition -> initialCamera
+        Zoom dz -> Camera pos front up yaw pitch fov'
+          where fov' = max 1 . min 45 $ fov + dz * cameraSpeed * 100
+        MoveMouse dx dy -> Camera pos front' up yaw' pitch' fov
+          where yaw' = yaw + dx * sensitivity
+                pitch' = max (-89) . min 89 $ pitch + dy * sensitivity
+                radYaw = radians yaw'
+                radPitch = radians pitch
+                front' =
+                  signorm $
+                  V3
+                    (cos radPitch * cos radYaw)
+                    (sin radPitch)
+                    (sin radYaw * cos radPitch)
+        _ -> Camera pos' front up yaw pitch fov
+          where pos' =
+                  case event of
+                    MoveUp -> pos ^+^ (front ^* cameraSpeed)
+                    MoveDown -> pos ^-^ (front ^* cameraSpeed)
+                    MoveLeft -> pos ^+^ signorm (cross front up) ^* cameraSpeed
+                    MoveRight -> pos ^-^ signorm (cross front up) ^* cameraSpeed
+                    MoveHalt -> pos
+                    _ -> pos
 
 radians deg = deg * pi / 180

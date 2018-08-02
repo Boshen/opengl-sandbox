@@ -10,6 +10,7 @@ data ProgramAction
   | MoveHalt
   | MoveMouse Float
               Float
+  | Zoom Float
   | ResetPosition
   | QuitProgram
   deriving (Eq)
@@ -23,13 +24,15 @@ parseEvent event =
     QuitEvent -> QuitProgram
     KeyboardEvent d ->
       case keysymKeycode . keyboardEventKeysym $ d of
-        KeycodeRight -> MoveRight
-        KeycodeLeft  -> MoveLeft
-        KeycodeDown  -> MoveDown
-        KeycodeUp    -> MoveUp
-        KeycodeSpace -> ResetPosition
+        KeycodeD      -> MoveRight
+        KeycodeA      -> MoveLeft
+        KeycodeS      -> MoveDown
+        KeycodeW      -> MoveUp
+        KeycodeQ      -> Zoom (-1.0)
+        KeycodeE      -> Zoom 1.0
+        KeycodeSpace  -> ResetPosition
         KeycodeEscape -> QuitProgram
-        _            -> MoveHalt
+        _             -> MoveHalt
     MouseMotionEvent d ->
       case mouseMotionEventRelMotion d of
         V2 x y -> MoveMouse (fromIntegral x) (fromIntegral y)

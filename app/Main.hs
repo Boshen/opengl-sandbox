@@ -147,14 +147,15 @@ initResources = do
   return $ Descriptor triangles firstIndex (fromIntegral numVertices) uniforms
 
 draw :: Camera -> Descriptor -> IO ()
-draw camera@(Camera cameraPos cameraFront cameraUp yaw pitch) (Descriptor triangles firstIndex numVertices uniforms) = do
+draw camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (Descriptor triangles firstIndex numVertices uniforms) = do
   seconds <- SDL.time :: IO Float
 
+  print camera
   -- set model view project
   let
       view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
       model =   Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0 0) seconds
-      projection = Linear.perspective (45.0 * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
+      projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
 
   glModelMatrix <- toGlMatrix model
   GL.uniform (modelLocation uniforms) $= glModelMatrix
