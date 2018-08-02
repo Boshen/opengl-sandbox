@@ -24,7 +24,7 @@ data Camera = Camera
 initialCamera :: Camera
 initialCamera =
   Camera
-    { cameraPos = V3 0 0 3
+    { cameraPos = V3 0 0 5
     , cameraFront = V3 0 0 (-1)
     , cameraUp = V3 0 1 0
     , cameraYaw = -90
@@ -40,7 +40,7 @@ updateCamera camera actions deltaTime =
 
 addCamera :: Float -> Camera -> ProgramAction -> Camera
 addCamera deltaTime camera@(Camera pos front up yaw pitch fov) event =
-  let cameraSpeed = 2.5 * deltaTime
+  let cameraSpeed = 3 * deltaTime
    in case event of
         ResetPosition -> initialCamera
         Zoom dz -> Camera pos front up yaw pitch fov'
@@ -61,8 +61,8 @@ addCamera deltaTime camera@(Camera pos front up yaw pitch fov) event =
                   case event of
                     MoveUp -> pos ^+^ (front ^* cameraSpeed)
                     MoveDown -> pos ^-^ (front ^* cameraSpeed)
-                    MoveLeft -> pos ^+^ signorm (cross front up) ^* cameraSpeed
-                    MoveRight -> pos ^-^ signorm (cross front up) ^* cameraSpeed
+                    MoveLeft -> pos ^-^ signorm (cross front up) ^* cameraSpeed
+                    MoveRight -> pos ^+^ signorm (cross front up) ^* cameraSpeed
                     MoveHalt -> pos
                     _ -> pos
 

@@ -116,28 +116,35 @@ makeCubeProgram = do
   arrayBuffer <- GL.genObjectName
   GL.bindBuffer GL.ArrayBuffer $= Just arrayBuffer
   withArray vertices $ \ptr -> do
-    let size = fromIntegral (numVertices * sizeOf (head vertices))
+    let size = fromIntegral (length vertices * sizeOf (head vertices))
     GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
 
   -- load shader
   program <-
     loadShaders
-      [ ShaderInfo GL.VertexShader (FileSource "./app/shader.vert")
+      [ ShaderInfo GL.VertexShader (FileSource "./app/cube.vert")
       , ShaderInfo GL.FragmentShader (FileSource "./app/cube.frag")
       ]
 
   -- vertex attribute
   let firstIndex = 0
       aPos = GL.AttribLocation 0
+      aNormal = GL.AttribLocation 1
       size = fromIntegral . sizeOf . head $ vertices
+
   GL.vertexAttribPointer aPos $=
     ( GL.ToFloat
-    , GL.VertexArrayDescriptor 3 GL.Float (5 * size) (bufferOffset firstIndex))
+    , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset firstIndex))
   GL.vertexAttribArray aPos $= GL.Enabled
 
-  uniforms <- makeUniforms program [ "model" , "view" , "projection" , "objectColor" , "lightColor" ]
+  GL.vertexAttribPointer aNormal $=
+    ( GL.ToFloat
+    , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset $ 3 * size))
+  GL.vertexAttribArray aNormal $= GL.Enabled
 
-  return $ GLData program cube firstIndex (fromIntegral numVertices) uniforms
+  uniforms <- makeUniforms program [ "model", "view", "projection", "objectColor", "lightColor", "lightPos"]
+
+  return $ GLData program cube firstIndex 36 uniforms
 
 makeLampProgram :: IO GLData
 makeLampProgram = do
@@ -149,13 +156,13 @@ makeLampProgram = do
   arrayBuffer <- GL.genObjectName
   GL.bindBuffer GL.ArrayBuffer $= Just arrayBuffer
   withArray vertices $ \ptr -> do
-    let size = fromIntegral (numVertices * sizeOf (head vertices))
+    let size = fromIntegral (length vertices * sizeOf (head vertices))
     GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
 
   -- load shader
   program <-
     loadShaders
-      [ ShaderInfo GL.VertexShader (FileSource "./app/shader.vert")
+      [ ShaderInfo GL.VertexShader (FileSource "./app/lamp.vert")
       , ShaderInfo GL.FragmentShader (FileSource "./app/lamp.frag")
       ]
 
@@ -165,12 +172,12 @@ makeLampProgram = do
       size = fromIntegral . sizeOf . head $ vertices
   GL.vertexAttribPointer aPos $=
     ( GL.ToFloat
-    , GL.VertexArrayDescriptor 3 GL.Float (5 * size) (bufferOffset firstIndex))
+    , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset firstIndex))
   GL.vertexAttribArray aPos $= GL.Enabled
 
-  uniforms <- makeUniforms program [ "model" , "view" , "projection" ]
+  uniforms <- makeUniforms program ["model", "view", "projection"]
 
-  return $ GLData program lamp firstIndex (fromIntegral numVertices) uniforms
+  return $ GLData program lamp firstIndex 36 uniforms
 
 draw :: Camera -> GLDataMap -> IO ()
 draw camera glDataMap = do
@@ -184,8 +191,9 @@ drawCube
   seconds <- SDL.time :: IO Float
   let
       view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
-      model = Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0 0) seconds
+      model = Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0 0) 0
       projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
+      light = let (V3 x y z) = lightPos seconds in GL.Vertex3 x y z
 
   glModelMatrix <- toGlMatrix model
   glViewMatrix <- toGlMatrix view
@@ -197,6 +205,7 @@ drawCube
   GL.uniform (uniforms ! "projection") $= glProjectionMatrix
   GL.uniform (uniforms ! "objectColor") $= (GL.Vertex3 1 0.5 0.31 :: GL.Vertex3 Float)
   GL.uniform (uniforms ! "lightColor") $= (GL.Vertex3 1 1 1 :: GL.Vertex3 Float)
+  GL.uniform (uniforms ! "lightPos") $= light
   GL.bindVertexArrayObject $= Just vao
   GL.drawArrays GL.Triangles index indices
 
@@ -207,7 +216,7 @@ drawLamp
   seconds <- SDL.time :: IO Float
   let
       view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
-      model = Linear.mkTransformationMat (Linear.identity :: M33 Float) (V3 1.2 1 2) !*! Linear.scaled (V4 0.1 0.1 0.1 1)
+      model = Linear.mkTransformationMat (Linear.identity :: M33 Float) (lightPos seconds) !*! Linear.scaled (V4 0.1 0.1 0.1 1)
       projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
 
   glModelMatrix <- toGlMatrix model
@@ -224,50 +233,48 @@ drawLamp
 vertices :: [Float]
 vertices =
   [
-      -0.5, -0.5, -0.5,  0.0, 0.0,
-     0.5, -0.5, -0.5,  1.0, 0.0,
-     0.5,  0.5, -0.5,  1.0, 1.0,
-     0.5,  0.5, -0.5,  1.0, 1.0,
-    -0.5,  0.5, -0.5,  0.0, 1.0,
-    -0.5, -0.5, -0.5,  0.0, 0.0,
+    -0.5, -0.5, -0.5,  0.0,  0.0, -1.0,
+     0.5, -0.5, -0.5,  0.0,  0.0, -1.0,
+     0.5,  0.5, -0.5,  0.0,  0.0, -1.0,
+     0.5,  0.5, -0.5,  0.0,  0.0, -1.0,
+    -0.5,  0.5, -0.5,  0.0,  0.0, -1.0,
+    -0.5, -0.5, -0.5,  0.0,  0.0, -1.0,
 
-    -0.5, -0.5,  0.5,  0.0, 0.0,
-     0.5, -0.5,  0.5,  1.0, 0.0,
-     0.5,  0.5,  0.5,  1.0, 1.0,
-     0.5,  0.5,  0.5,  1.0, 1.0,
-    -0.5,  0.5,  0.5,  0.0, 1.0,
-    -0.5, -0.5,  0.5,  0.0, 0.0,
+    -0.5, -0.5,  0.5,  0.0,  0.0, 1.0,
+     0.5, -0.5,  0.5,  0.0,  0.0, 1.0,
+     0.5,  0.5,  0.5,  0.0,  0.0, 1.0,
+     0.5,  0.5,  0.5,  0.0,  0.0, 1.0,
+    -0.5,  0.5,  0.5,  0.0,  0.0, 1.0,
+    -0.5, -0.5,  0.5,  0.0,  0.0, 1.0,
 
-    -0.5,  0.5,  0.5,  1.0, 0.0,
-    -0.5,  0.5, -0.5,  1.0, 1.0,
-    -0.5, -0.5, -0.5,  0.0, 1.0,
-    -0.5, -0.5, -0.5,  0.0, 1.0,
-    -0.5, -0.5,  0.5,  0.0, 0.0,
-    -0.5,  0.5,  0.5,  1.0, 0.0,
+    -0.5,  0.5,  0.5, -1.0,  0.0,  0.0,
+    -0.5,  0.5, -0.5, -1.0,  0.0,  0.0,
+    -0.5, -0.5, -0.5, -1.0,  0.0,  0.0,
+    -0.5, -0.5, -0.5, -1.0,  0.0,  0.0,
+    -0.5, -0.5,  0.5, -1.0,  0.0,  0.0,
+    -0.5,  0.5,  0.5, -1.0,  0.0,  0.0,
 
-     0.5,  0.5,  0.5,  1.0, 0.0,
-     0.5,  0.5, -0.5,  1.0, 1.0,
-     0.5, -0.5, -0.5,  0.0, 1.0,
-     0.5, -0.5, -0.5,  0.0, 1.0,
-     0.5, -0.5,  0.5,  0.0, 0.0,
-     0.5,  0.5,  0.5,  1.0, 0.0,
+     0.5,  0.5,  0.5,  1.0,  0.0,  0.0,
+     0.5,  0.5, -0.5,  1.0,  0.0,  0.0,
+     0.5, -0.5, -0.5,  1.0,  0.0,  0.0,
+     0.5, -0.5, -0.5,  1.0,  0.0,  0.0,
+     0.5, -0.5,  0.5,  1.0,  0.0,  0.0,
+     0.5,  0.5,  0.5,  1.0,  0.0,  0.0,
 
-    -0.5, -0.5, -0.5,  0.0, 1.0,
-     0.5, -0.5, -0.5,  1.0, 1.0,
-     0.5, -0.5,  0.5,  1.0, 0.0,
-     0.5, -0.5,  0.5,  1.0, 0.0,
-    -0.5, -0.5,  0.5,  0.0, 0.0,
-    -0.5, -0.5, -0.5,  0.0, 1.0,
+    -0.5, -0.5, -0.5,  0.0, -1.0,  0.0,
+     0.5, -0.5, -0.5,  0.0, -1.0,  0.0,
+     0.5, -0.5,  0.5,  0.0, -1.0,  0.0,
+     0.5, -0.5,  0.5,  0.0, -1.0,  0.0,
+    -0.5, -0.5,  0.5,  0.0, -1.0,  0.0,
+    -0.5, -0.5, -0.5,  0.0, -1.0,  0.0,
 
-    -0.5,  0.5, -0.5,  0.0, 1.0,
-     0.5,  0.5, -0.5,  1.0, 1.0,
-     0.5,  0.5,  0.5,  1.0, 0.0,
-     0.5,  0.5,  0.5,  1.0, 0.0,
-    -0.5,  0.5,  0.5,  0.0, 0.0,
-    -0.5,  0.5, -0.5,  0.0, 1.0
+    -0.5,  0.5, -0.5,  0.0,  1.0,  0.0,
+     0.5,  0.5, -0.5,  0.0,  1.0,  0.0,
+     0.5,  0.5,  0.5,  0.0,  1.0,  0.0,
+     0.5,  0.5,  0.5,  0.0,  1.0,  0.0,
+    -0.5,  0.5,  0.5,  0.0,  1.0,  0.0,
+    -0.5,  0.5, -0.5,  0.0,  1.0,  0.0
   ]
-
-numVertices = length vertices
 
 toGlMatrix :: M44 Float -> IO (GL.GLmatrix GL.GLfloat)
 toGlMatrix mat =
@@ -284,3 +291,5 @@ makeUniforms program names = Map.fromList <$> mapM makeUniform names
       uniform <- GL.uniformLocation program name
       return (name, uniform)
 
+lightPos :: Float -> V3 Float
+lightPos s = V3  (2 * cos s) 0 (2 * sin s)

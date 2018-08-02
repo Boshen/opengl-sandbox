@@ -8,8 +8,9 @@ copyright:           "2018 Author name here"
 
 extra-source-files:
 - README.md
-- app/shader.vert
+- app/cube.vert
 - app/cube.frag
+- app/lamp.vert
 - app/lamp.frag
 
 # Metadata used when publishing your package
