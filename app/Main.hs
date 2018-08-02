@@ -23,6 +23,7 @@ import qualified SDL
 import           SDL.Vect
 import           SDL.Video.OpenGL          (Mode (Normal))
 
+import           Action
 import           Camera
 import           LoadShaders
 
@@ -86,9 +87,10 @@ onDisplay window descriptor camera lastFrame = do
   SDL.glSwapWindow window
   events <- SDL.pollEvents
   currentFrame <- SDL.time
-  let quit = elem SDL.QuitEvent $ map SDL.eventPayload events
+  let actions = parseEvents events
+      quit = QuitProgram `elem` actions
       deltaTime = currentFrame - lastFrame
-      updatedCamera = updateCamera camera events deltaTime
+      updatedCamera = updateCamera camera actions deltaTime
   unless quit (onDisplay window descriptor updatedCamera currentFrame)
 
 bufferOffset :: Integral a => a -> Ptr b
