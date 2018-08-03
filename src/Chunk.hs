@@ -15,14 +15,12 @@ chunk showChunk = concat blocks
       x <- [0..blockSize - 1]
       y <- [0..blockSize - 1]
       z <- [0..blockSize - 1]
-      let x' = fromIntegral x / fromIntegral blockSize
-          y' = fromIntegral y / fromIntegral blockSize
-          z' = fromIntegral z / fromIntegral blockSize
-      guard $ showChunk (V3 x' y' z')
-      return $ block x' y' z'
+      let v = V3 (fromIntegral x) (fromIntegral y) (fromIntegral z)
+      guard $ showChunk v
+      return $ block (v ^/ fromIntegral blockSize)
 
-block :: Float -> Float -> Float -> [Float]
-block x y z =
+block :: V3 Float -> [Float]
+block (V3 x y z) =
   let
     size = 1 / fromIntegral blockSize
     p1 = [x-size, y-size, z+size]

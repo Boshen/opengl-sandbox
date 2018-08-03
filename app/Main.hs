@@ -18,8 +18,7 @@ import qualified Data.Foldable             as Foldable
 import           Data.Map.Strict           (Map, (!))
 import qualified Data.Map.Strict           as Map
 import qualified Graphics.Rendering.OpenGL as GL
-import           Linear                    ((!*!), (^+^))
-import qualified Linear
+import           Linear
 import           SDL                       (($=))
 import qualified SDL
 import           SDL.Vect
@@ -27,8 +26,8 @@ import           SDL.Video.OpenGL          (Mode (Normal))
 
 import           Action
 import           Camera
+import           Chunk
 import           LoadShaders
-import Chunk
 
 data GLData = GLData
   { glProgram  :: GL.Program
@@ -110,7 +109,7 @@ initResources = do
 
 makeCubeProgram :: IO GLData
 makeCubeProgram = do
-  let currentChunk = chunk (\(V3 x y z) -> (x * x + y * y + z * z) < 0.25)
+  let currentChunk = chunk (\v -> let (V3 x y z) = v ^-^ (V3 8 8 8) in (x * x + y * y + z * z) < 64)
   -- vao
   cube <- GL.genObjectName
   GL.bindVertexArrayObject $= Just cube
@@ -151,7 +150,7 @@ makeCubeProgram = do
 
 makeLampProgram :: IO GLData
 makeLampProgram = do
-  let currentChunk = block 0 0 0
+  let currentChunk = block (V3 0 0 0)
   -- vao
   lamp <- GL.genObjectName
   GL.bindVertexArrayObject $= Just lamp
@@ -195,8 +194,8 @@ drawChunk
   seconds <- SDL.time :: IO Float
   let
       view = getViewMatrix camera
-      model = Linear.mkTransformationMat (Linear.identity :: M33 Float) (V3 0 0 0)
-      projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
+      model = mkTransformationMat (identity :: M33 Float) (V3 0 0 0)
+      projection = perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
       light = let (V3 x y z) = lightPos seconds in GL.Vertex3 x y z
 
   glModelMatrix <- toGlMatrix model
@@ -220,8 +219,8 @@ drawLamp
   seconds <- SDL.time :: IO Float
   let
       view = getViewMatrix camera
-      model = Linear.mkTransformationMat (Linear.identity :: M33 Float) (lightPos seconds) !*! Linear.scaled (V4 0.1 0.1 0.1 1)
-      projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
+      model = mkTransformationMat (identity :: M33 Float) (lightPos seconds) !*! scaled (V4 0.1 0.1 0.1 1)
+      projection = perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
 
   glModelMatrix <- toGlMatrix model
   glViewMatrix <- toGlMatrix view
