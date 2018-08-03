@@ -28,7 +28,7 @@ import           SDL.Video.OpenGL          (Mode (Normal))
 import           Action
 import           Camera
 import           LoadShaders
-import Cube
+import Chunk
 
 data GLData = GLData
   { glProgram  :: GL.Program
@@ -109,6 +109,7 @@ initResources = do
 
 makeCubeProgram :: IO GLData
 makeCubeProgram = do
+  let currentChunk = chunk (\(V3 x y z) -> (x * x + y * y + z * z) < 0.25)
   -- vao
   cube <- GL.genObjectName
   GL.bindVertexArrayObject $= Just cube
@@ -116,8 +117,8 @@ makeCubeProgram = do
   -- vbo
   arrayBuffer <- GL.genObjectName
   GL.bindBuffer GL.ArrayBuffer $= Just arrayBuffer
-  withArray cubeVertices $ \ptr -> do
-    let size = fromIntegral (length cubeVertices * sizeOf (head cubeVertices))
+  withArray currentChunk $ \ptr -> do
+    let size = fromIntegral (length currentChunk * sizeOf (head currentChunk))
     GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
 
   -- load shader
@@ -131,7 +132,7 @@ makeCubeProgram = do
   let firstIndex = 0
       aPos = GL.AttribLocation 0
       aNormal = GL.AttribLocation 1
-      size = fromIntegral . sizeOf . head $ cubeVertices
+      size = fromIntegral . sizeOf . head $ currentChunk
 
   GL.vertexAttribPointer aPos $=
     ( GL.ToFloat
@@ -145,10 +146,11 @@ makeCubeProgram = do
 
   uniforms <- makeUniforms program [ "model", "view", "projection", "objectColor", "lightColor", "lightPos"]
 
-  return $ GLData program cube firstIndex 36 uniforms
+  return $ GLData program cube firstIndex (fromIntegral $ div (length currentChunk) 6) uniforms
 
 makeLampProgram :: IO GLData
 makeLampProgram = do
+  let currentChunk = block 0 0 0
   -- vao
   lamp <- GL.genObjectName
   GL.bindVertexArrayObject $= Just lamp
@@ -156,8 +158,8 @@ makeLampProgram = do
   -- vbo
   arrayBuffer <- GL.genObjectName
   GL.bindBuffer GL.ArrayBuffer $= Just arrayBuffer
-  withArray cubeVertices $ \ptr -> do
-    let size = fromIntegral (length cubeVertices * sizeOf (head cubeVertices))
+  withArray currentChunk $ \ptr -> do
+    let size = fromIntegral (length currentChunk * sizeOf (head currentChunk))
     GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
 
   -- load shader
@@ -170,7 +172,7 @@ makeLampProgram = do
   -- vertex attribute
   let firstIndex = 0
       aPos = GL.AttribLocation 0
-      size = fromIntegral . sizeOf . head $ cubeVertices
+      size = fromIntegral . sizeOf . head $ currentChunk
   GL.vertexAttribPointer aPos $=
     ( GL.ToFloat
     , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset firstIndex))
@@ -178,22 +180,21 @@ makeLampProgram = do
 
   uniforms <- makeUniforms program ["model", "view", "projection"]
 
-  return $ GLData program lamp firstIndex 36 uniforms
+  return $ GLData program lamp firstIndex (fromIntegral $ div (length currentChunk) 6) uniforms
 
 draw :: Camera -> GLDataMap -> IO ()
 draw camera glDataMap = do
-  mapM_ (drawCube camera (glDataMap ! "cube")) [V3 x y z | x <- [0..3], y <- [0..3], z <- [0..3]]
+  drawChunk camera (glDataMap ! "cube")
   drawLamp camera (glDataMap ! "lamp")
 
-drawCube :: Camera -> GLData -> V3 Float -> IO ()
-drawCube
+drawChunk :: Camera -> GLData -> IO ()
+drawChunk
   (Camera cameraPos cameraFront cameraUp yaw pitch fov)
-  (GLData program vao index indices uniforms)
-  pos = do
+  (GLData program vao index indices uniforms) = do
   seconds <- SDL.time :: IO Float
   let
       view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
-      model = Linear.mkTransformationMat (Linear.identity :: M33 Float) pos
+      model = Linear.mkTransformationMat (Linear.identity :: M33 Float) (V3 0 0 0)
       projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
       light = let (V3 x y z) = lightPos seconds in GL.Vertex3 x y z
 

@@ -40,7 +40,7 @@ updateCamera camera actions deltaTime =
 
 addCamera :: Float -> Camera -> ProgramAction -> Camera
 addCamera deltaTime camera@(Camera pos front up yaw pitch fov) event =
-  let cameraSpeed = 3 * deltaTime
+  let cameraSpeed = 10 * deltaTime
    in case event of
         ResetPosition -> initialCamera
         Zoom dz -> Camera pos front up yaw pitch fov'
