@@ -28,6 +28,7 @@ import           SDL.Video.OpenGL          (Mode (Normal))
 import           Action
 import           Camera
 import           LoadShaders
+import Cube
 
 data GLData = GLData
   { glProgram  :: GL.Program
@@ -115,8 +116,8 @@ makeCubeProgram = do
   -- vbo
   arrayBuffer <- GL.genObjectName
   GL.bindBuffer GL.ArrayBuffer $= Just arrayBuffer
-  withArray vertices $ \ptr -> do
-    let size = fromIntegral (length vertices * sizeOf (head vertices))
+  withArray cubeVertices $ \ptr -> do
+    let size = fromIntegral (length cubeVertices * sizeOf (head cubeVertices))
     GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
 
   -- load shader
@@ -130,7 +131,7 @@ makeCubeProgram = do
   let firstIndex = 0
       aPos = GL.AttribLocation 0
       aNormal = GL.AttribLocation 1
-      size = fromIntegral . sizeOf . head $ vertices
+      size = fromIntegral . sizeOf . head $ cubeVertices
 
   GL.vertexAttribPointer aPos $=
     ( GL.ToFloat
@@ -155,8 +156,8 @@ makeLampProgram = do
   -- vbo
   arrayBuffer <- GL.genObjectName
   GL.bindBuffer GL.ArrayBuffer $= Just arrayBuffer
-  withArray vertices $ \ptr -> do
-    let size = fromIntegral (length vertices * sizeOf (head vertices))
+  withArray cubeVertices $ \ptr -> do
+    let size = fromIntegral (length cubeVertices * sizeOf (head cubeVertices))
     GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
 
   -- load shader
@@ -169,7 +170,7 @@ makeLampProgram = do
   -- vertex attribute
   let firstIndex = 0
       aPos = GL.AttribLocation 0
-      size = fromIntegral . sizeOf . head $ vertices
+      size = fromIntegral . sizeOf . head $ cubeVertices
   GL.vertexAttribPointer aPos $=
     ( GL.ToFloat
     , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset firstIndex))
@@ -181,17 +182,18 @@ makeLampProgram = do
 
 draw :: Camera -> GLDataMap -> IO ()
 draw camera glDataMap = do
-  drawCube camera (glDataMap ! "cube")
+  mapM_ (drawCube camera (glDataMap ! "cube")) [V3 x y z | x <- [0..3], y <- [0..3], z <- [0..3]]
   drawLamp camera (glDataMap ! "lamp")
 
-drawCube :: Camera -> GLData -> IO ()
+drawCube :: Camera -> GLData -> V3 Float -> IO ()
 drawCube
   (Camera cameraPos cameraFront cameraUp yaw pitch fov)
-  (GLData program vao index indices uniforms) = do
+  (GLData program vao index indices uniforms)
+  pos = do
   seconds <- SDL.time :: IO Float
   let
       view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
-      model = Linear.m33_to_m44 . fromQuaternion $ axisAngle (V3 1 0 0) 0
+      model = Linear.mkTransformationMat (Linear.identity :: M33 Float) pos
       projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
       light = let (V3 x y z) = lightPos seconds in GL.Vertex3 x y z
 
@@ -230,52 +232,6 @@ drawLamp
   GL.bindVertexArrayObject $= Just vao
   GL.drawArrays GL.Triangles index indices
 
-vertices :: [Float]
-vertices =
-  [
-    -0.5, -0.5, -0.5,  0.0,  0.0, -1.0,
-     0.5, -0.5, -0.5,  0.0,  0.0, -1.0,
-     0.5,  0.5, -0.5,  0.0,  0.0, -1.0,
-     0.5,  0.5, -0.5,  0.0,  0.0, -1.0,
-    -0.5,  0.5, -0.5,  0.0,  0.0, -1.0,
-    -0.5, -0.5, -0.5,  0.0,  0.0, -1.0,
-
-    -0.5, -0.5,  0.5,  0.0,  0.0, 1.0,
-     0.5, -0.5,  0.5,  0.0,  0.0, 1.0,
-     0.5,  0.5,  0.5,  0.0,  0.0, 1.0,
-     0.5,  0.5,  0.5,  0.0,  0.0, 1.0,
-    -0.5,  0.5,  0.5,  0.0,  0.0, 1.0,
-    -0.5, -0.5,  0.5,  0.0,  0.0, 1.0,
-
-    -0.5,  0.5,  0.5, -1.0,  0.0,  0.0,
-    -0.5,  0.5, -0.5, -1.0,  0.0,  0.0,
-    -0.5, -0.5, -0.5, -1.0,  0.0,  0.0,
-    -0.5, -0.5, -0.5, -1.0,  0.0,  0.0,
-    -0.5, -0.5,  0.5, -1.0,  0.0,  0.0,
-    -0.5,  0.5,  0.5, -1.0,  0.0,  0.0,
-
-     0.5,  0.5,  0.5,  1.0,  0.0,  0.0,
-     0.5,  0.5, -0.5,  1.0,  0.0,  0.0,
-     0.5, -0.5, -0.5,  1.0,  0.0,  0.0,
-     0.5, -0.5, -0.5,  1.0,  0.0,  0.0,
-     0.5, -0.5,  0.5,  1.0,  0.0,  0.0,
-     0.5,  0.5,  0.5,  1.0,  0.0,  0.0,
-
-    -0.5, -0.5, -0.5,  0.0, -1.0,  0.0,
-     0.5, -0.5, -0.5,  0.0, -1.0,  0.0,
-     0.5, -0.5,  0.5,  0.0, -1.0,  0.0,
-     0.5, -0.5,  0.5,  0.0, -1.0,  0.0,
-    -0.5, -0.5,  0.5,  0.0, -1.0,  0.0,
-    -0.5, -0.5, -0.5,  0.0, -1.0,  0.0,
-
-    -0.5,  0.5, -0.5,  0.0,  1.0,  0.0,
-     0.5,  0.5, -0.5,  0.0,  1.0,  0.0,
-     0.5,  0.5,  0.5,  0.0,  1.0,  0.0,
-     0.5,  0.5,  0.5,  0.0,  1.0,  0.0,
-    -0.5,  0.5,  0.5,  0.0,  1.0,  0.0,
-    -0.5,  0.5, -0.5,  0.0,  1.0,  0.0
-  ]
-
 toGlMatrix :: M44 Float -> IO (GL.GLmatrix GL.GLfloat)
 toGlMatrix mat =
   GL.withNewMatrix GL.RowMajor $ \glPtr ->
@@ -292,4 +248,4 @@ makeUniforms program names = Map.fromList <$> mapM makeUniform names
       return (name, uniform)
 
 lightPos :: Float -> V3 Float
-lightPos s = V3  (2 * cos s) 0 (2 * sin s)
+lightPos s = V3  (10 * cos s) 0 (10 * sin s)
