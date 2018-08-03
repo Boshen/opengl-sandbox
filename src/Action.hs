@@ -3,7 +3,9 @@ module Action where
 import           SDL
 
 data ProgramAction
-  = MoveUp
+  = MoveForward
+  | MoveBackward
+  | MoveUp
   | MoveDown
   | MoveLeft
   | MoveRight
@@ -26,14 +28,16 @@ parseEvent event =
       case keysymKeycode . keyboardEventKeysym $ d of
         KeycodeD      -> MoveRight
         KeycodeA      -> MoveLeft
-        KeycodeS      -> MoveDown
-        KeycodeW      -> MoveUp
-        KeycodeQ      -> Zoom (-1.0)
-        KeycodeE      -> Zoom 1.0
+        KeycodeW      -> MoveForward
+        KeycodeS      -> MoveBackward
+        KeycodeQ      -> MoveUp
+        KeycodeE      -> MoveDown
+        KeycodeO      -> Zoom (-1.0)
+        KeycodeP      -> Zoom 1.0
         KeycodeSpace  -> ResetPosition
         KeycodeEscape -> QuitProgram
         _             -> MoveHalt
     MouseMotionEvent d ->
       case mouseMotionEventRelMotion d of
-        V2 x y -> MoveMouse (fromIntegral x) (fromIntegral y)
+        V2 x y -> MoveMouse (fromIntegral x) (fromIntegral $ -1 * y)
     _ -> MoveHalt

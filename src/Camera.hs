@@ -2,6 +2,7 @@ module Camera
   ( Camera(..)
   , initialCamera
   , updateCamera
+  , getViewMatrix
   ) where
 
 import           Data.Foldable
@@ -49,21 +50,30 @@ addCamera deltaTime camera@(Camera pos front up yaw pitch fov) event =
           where yaw' = yaw + dx * sensitivity
                 pitch' = max (-89) . min 89 $ pitch + dy * sensitivity
                 radYaw = radians yaw'
-                radPitch = radians pitch
+                radPitch = radians pitch'
                 front' =
                   signorm $
                   V3
                     (cos radPitch * cos radYaw)
                     (sin radPitch)
                     (sin radYaw * cos radPitch)
-        _ -> Camera (V3 x 0 z) front up yaw pitch fov -- set y = 0 to keep at ground level
+        _ -> Camera (V3 x y z) front up yaw pitch fov -- set y = 0 to keep at ground level
           where (V3 x y z) =
                   case event of
-                    MoveUp -> pos ^+^ (front ^* cameraSpeed)
-                    MoveDown -> pos ^-^ (front ^* cameraSpeed)
+                    MoveForward -> pos ^+^ (front ^* cameraSpeed)
+                    MoveBackward -> pos ^-^ (front ^* cameraSpeed)
+                    MoveUp -> pos ^+^ (up ^* cameraSpeed)
+                    MoveDown -> pos ^-^ (up ^* cameraSpeed)
                     MoveLeft -> pos ^-^ signorm (cross front up) ^* cameraSpeed
                     MoveRight -> pos ^+^ signorm (cross front up) ^* cameraSpeed
                     MoveHalt -> pos
                     _ -> pos
 
 radians deg = deg * pi / 180
+
+getViewMatrix :: Camera -> M44 Float
+getViewMatrix camera = Linear.lookAt pos (pos ^+^ front) up
+  where
+    pos = cameraPos camera
+    front = cameraFront camera
+    up = cameraUp camera

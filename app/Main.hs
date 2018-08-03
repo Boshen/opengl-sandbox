@@ -71,6 +71,7 @@ main = do
   SDL.showWindow window
   SDL.glCreateContext window
   discriptor <- initResources
+  SDL.warpMouse SDL.WarpCurrentFocus (SDL.P $ V2 0 0)
   onDisplay window discriptor initialCamera 0
   SDL.destroyWindow window
   SDL.quit
@@ -189,11 +190,11 @@ draw camera glDataMap = do
 
 drawChunk :: Camera -> GLData -> IO ()
 drawChunk
-  (Camera cameraPos cameraFront cameraUp yaw pitch fov)
+  camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov)
   (GLData program vao index indices uniforms) = do
   seconds <- SDL.time :: IO Float
   let
-      view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
+      view = getViewMatrix camera
       model = Linear.mkTransformationMat (Linear.identity :: M33 Float) (V3 0 0 0)
       projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
       light = let (V3 x y z) = lightPos seconds in GL.Vertex3 x y z
@@ -214,11 +215,11 @@ drawChunk
 
 drawLamp  :: Camera -> GLData -> IO ()
 drawLamp
-  (Camera cameraPos cameraFront cameraUp yaw pitch fov)
+  camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov)
   (GLData program vao index indices uniforms) = do
   seconds <- SDL.time :: IO Float
   let
-      view = Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
+      view = getViewMatrix camera
       model = Linear.mkTransformationMat (Linear.identity :: M33 Float) (lightPos seconds) !*! Linear.scaled (V4 0.1 0.1 0.1 1)
       projection = Linear.perspective (fov * pi / 180.0) (fromIntegral screenWidth / fromIntegral screenHeight) 0.1 100.0
 
