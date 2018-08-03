@@ -6,10 +6,7 @@ module Camera
   ) where
 
 import           Data.Foldable
-import           Data.Function
 import           Linear
-import           SDL.Event
-import           SDL.Input.Keyboard
 
 import           Action
 

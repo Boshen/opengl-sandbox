@@ -34,12 +34,15 @@ dependencies:
 
 library:
   source-dirs: src
+  ghc-options:
+    - -Wunused-imports
 
 executables:
   opengl-sandbox-exe:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
+    - -Wunused-imports
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N

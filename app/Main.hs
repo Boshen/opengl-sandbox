@@ -3,17 +3,11 @@
 module Main where
 
 import           Control.Monad
-import qualified Data.ByteString           as BS
-import qualified Data.Vector.Storable      as V
 import           Foreign.C.Types
-import           Foreign.ForeignPtr
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           Foreign.Storable
-import           System.Exit               (exitFailure)
-import           System.IO
 
-import           Control.Lens              ((&), (.~))
 import qualified Data.Foldable             as Foldable
 import           Data.Map.Strict           (Map, (!))
 import qualified Data.Map.Strict           as Map
@@ -21,7 +15,6 @@ import qualified Graphics.Rendering.OpenGL as GL
 import           Linear
 import           SDL                       (($=))
 import qualified SDL
-import           SDL.Vect
 import           SDL.Video.OpenGL          (Mode (Normal))
 
 import           Action
@@ -109,7 +102,7 @@ initResources = do
 
 makeCubeProgram :: IO GLData
 makeCubeProgram = do
-  let currentChunk = chunk (\v -> let (V3 x y z) = v ^-^ (V3 8 8 8) in (x * x + y * y + z * z) < 64)
+  let currentChunk = chunk (\v -> let (V3 x y z) = v ^-^ V3 8 8 8 in (x * x + y * y + z * z) < 64)
   -- vao
   cube <- GL.genObjectName
   GL.bindVertexArrayObject $= Just cube
