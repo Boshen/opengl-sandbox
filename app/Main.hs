@@ -9,8 +9,6 @@ import           Foreign.Ptr
 import           Foreign.Storable
 
 import qualified Data.Foldable             as Foldable
-import           Data.Map.Strict           (Map, (!))
-import qualified Data.Map.Strict           as Map
 import qualified Graphics.Rendering.OpenGL as GL
 import           Linear
 import           SDL                       (($=))
@@ -23,10 +21,9 @@ import           Chunk
 import           LoadShaders
 
 data GLData = GLData
-  { glProgram  :: GL.Program
-  , glVAO      :: GL.VertexArrayObject
-  , glVBO      :: GL.BufferObject
-  , glUniforms :: Map String GL.UniformLocation
+  { glProgram :: GL.Program
+  , glVAO     :: GL.VertexArrayObject
+  , glVBO     :: GL.BufferObject
   }
 
 data AppState = AppState
@@ -116,11 +113,10 @@ makeCubeProgram = do
       [ ShaderInfo GL.VertexShader (FileSource "./app/cube.vert")
       , ShaderInfo GL.FragmentShader (FileSource "./app/cube.frag")
       ]
-  uniforms <-
-    makeUniforms
-      program
-      ["model", "view", "projection", "objectColor", "lightColor", "lightPos"]
-  return $ GLData program vao vbo uniforms
+  mapM_
+    (GL.uniformLocation program)
+    ["model", "view", "projection", "objectColor", "lightColor", "lightPos"]
+  return $ GLData program vao vbo
 
 makeLampProgram :: IO GLData
 makeLampProgram = do
@@ -131,8 +127,8 @@ makeLampProgram = do
       [ ShaderInfo GL.VertexShader (FileSource "./app/lamp.vert")
       , ShaderInfo GL.FragmentShader (FileSource "./app/lamp.frag")
       ]
-  uniforms <- makeUniforms program ["model", "view", "projection"]
-  return $ GLData program vao vbo uniforms
+  mapM_ (GL.uniformLocation program) ["model", "view", "projection"]
+  return $ GLData program vao vbo
 
 draw :: Camera -> AppState -> IO AppState
 draw camera app = do
@@ -141,7 +137,7 @@ draw camera app = do
   return $ AppState terrain lamp'
 
 drawChunk :: Camera -> ([Chunk], GLData) -> IO ([Chunk], GLData)
-drawChunk camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, glData@(GLData program vao vbo uniforms)) = do
+drawChunk camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, glData@(GLData program vao vbo)) = do
   seconds <- SDL.time :: IO Float
   let (Chunk chunkBlocks isChunkUpdated) = head chunks
       view = getViewMatrix camera
@@ -177,19 +173,18 @@ drawChunk camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, 
       ( GL.ToFloat
       , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset $ 3 * size))
     GL.vertexAttribArray aNormal $= GL.Enabled
-  GL.uniform (uniforms ! "model") $= glModelMatrix
-  GL.uniform (uniforms ! "view") $= glViewMatrix
-  GL.uniform (uniforms ! "projection") $= glProjectionMatrix
-  GL.uniform (uniforms ! "objectColor") $=
-    (GL.Vertex3 1 0.5 0.31 :: GL.Vertex3 Float)
-  GL.uniform (uniforms ! "lightColor") $= (GL.Vertex3 1 1 1 :: GL.Vertex3 Float)
-  GL.uniform (uniforms ! "lightPos") $= light
+  setUniform program "model" glModelMatrix
+  setUniform program "view" glViewMatrix
+  setUniform program "projection" glProjectionMatrix
+  setUniform program "objectColor" (GL.Vertex3 1 0.5 0.31 :: GL.Vertex3 Float)
+  setUniform program "lightColor" (GL.Vertex3 1 1 1 :: GL.Vertex3 Float)
+  setUniform program "lightPos" light
   GL.bindVertexArrayObject $= Just vao
   GL.drawArrays GL.Triangles 0 (fromIntegral $ div (length chunkBlocks) 6)
   return ([Chunk chunkBlocks True], glData)
 
 drawLamp :: Camera -> ([Chunk], GLData) -> IO ([Chunk], GLData)
-drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, glData@(GLData program vao vbo uniforms)) = do
+drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, glData@(GLData program vao vbo)) = do
   seconds <- SDL.time :: IO Float
   let (Chunk chunkBlocks isChunkUpdated) = head chunks
       view = getViewMatrix camera
@@ -217,12 +212,16 @@ drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, g
       ( GL.ToFloat
       , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset firstIndex))
     GL.vertexAttribArray aPos $= GL.Enabled
-  GL.uniform (uniforms ! "model") $= glModelMatrix
-  GL.uniform (uniforms ! "view") $= glViewMatrix
-  GL.uniform (uniforms ! "projection") $= glProjectionMatrix
+  setUniform program "model" glModelMatrix
+  setUniform program "view" glViewMatrix
+  setUniform program "projection" glProjectionMatrix
   GL.bindVertexArrayObject $= Just vao
   GL.drawArrays GL.Triangles 0 (fromIntegral $ div (length chunkBlocks) 6)
   return ([Chunk chunkBlocks True], glData)
+
+setUniform program name d = do
+  location <- GL.uniformLocation program name
+  GL.uniform location $= d
 
 toGlMatrix :: M44 Float -> IO (GL.GLmatrix GL.GLfloat)
 toGlMatrix mat =
@@ -231,13 +230,6 @@ toGlMatrix mat =
       (pokeElemOff glPtr)
       [0 ..]
       (concat $ Foldable.toList <$> Foldable.toList mat)
-
-makeUniforms :: GL.Program -> [String] -> IO (Map String GL.UniformLocation)
-makeUniforms program names = Map.fromList <$> mapM makeUniform names
-  where
-    makeUniform name = do
-      uniform <- GL.uniformLocation program name
-      return (name, uniform)
 
 lightPos :: Float -> V3 Float
 lightPos s = V3 (10 * cos s) 0 (10 * sin s)
