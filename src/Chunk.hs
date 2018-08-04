@@ -1,7 +1,6 @@
 module Chunk where
 
-import           Control.Monad
-
+import qualified Math.Noise as Noise
 import           Linear
 
 data Chunk = Chunk
@@ -17,11 +16,12 @@ makeBlocks showBlock = concat blocks
   where
     blocks = do
       x <- [0 .. blockSize - 1]
-      y <- [0 .. blockSize - 1]
       z <- [0 .. blockSize - 1]
+      y <- [0 .. height x z - 1]
       let v = V3 (fromIntegral x) (fromIntegral y) (fromIntegral z)
-      guard $ showBlock v
       return $ makeBlock (v ^/ fromIntegral blockSize)
+      where
+        height x z = round $ Noise.linear (fromIntegral x) (fromIntegral z) 0.5
 
 makeBlock :: V3 Float -> [Float]
 makeBlock (V3 x y z) =

@@ -83,7 +83,8 @@ onDisplay window app camera lastFrame = do
       quit = QuitProgram `elem` actions
       deltaTime = currentFrame - lastFrame
       updatedCamera = updateCamera camera actions deltaTime
-  unless quit (onDisplay window app' updatedCamera currentFrame)
+      app'' = updateApp currentFrame app'
+  unless quit (onDisplay window app'' updatedCamera currentFrame)
 
 bufferOffset :: Integral a => a -> Ptr b
 bufferOffset = plusPtr nullPtr . fromIntegral
@@ -100,8 +101,8 @@ initApp = do
               in (x * x + y * y + z * z) < 64)
   return $
     AppState
-      { terrain = ([Chunk cubeChunk False], cubeProgram)
-      , lamp = ([Chunk lampChunk False], lampProgram)
+      { terrain = ([Chunk cubeChunk True], cubeProgram)
+      , lamp = ([Chunk lampChunk True], lampProgram)
       }
 
 makeCubeProgram :: IO GLData
@@ -155,7 +156,7 @@ drawChunk camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, 
   glViewMatrix <- toGlMatrix view
   glProjectionMatrix <- toGlMatrix projection
   GL.currentProgram $= Just program
-  unless isChunkUpdated $ do
+  when isChunkUpdated $ do
     let firstIndex = 0
         aPos = GL.AttribLocation 0
         aNormal = GL.AttribLocation 1
@@ -181,7 +182,7 @@ drawChunk camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, 
   setUniform program "lightPos" light
   GL.bindVertexArrayObject $= Just vao
   GL.drawArrays GL.Triangles 0 (fromIntegral $ div (length chunkBlocks) 6)
-  return ([Chunk chunkBlocks True], glData)
+  return ([Chunk chunkBlocks False], glData)
 
 drawLamp :: Camera -> ([Chunk], GLData) -> IO ([Chunk], GLData)
 drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, glData@(GLData program vao vbo)) = do
@@ -199,7 +200,7 @@ drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, g
   glViewMatrix <- toGlMatrix view
   glProjectionMatrix <- toGlMatrix projection
   GL.currentProgram $= Just program
-  unless isChunkUpdated $ do
+  when isChunkUpdated $ do
     let firstIndex = 0
         aPos = GL.AttribLocation 0
         size = fromIntegral . sizeOf $ (0 :: Float)
@@ -217,7 +218,7 @@ drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) (chunks, g
   setUniform program "projection" glProjectionMatrix
   GL.bindVertexArrayObject $= Just vao
   GL.drawArrays GL.Triangles 0 (fromIntegral $ div (length chunkBlocks) 6)
-  return ([Chunk chunkBlocks True], glData)
+  return ([Chunk chunkBlocks False], glData)
 
 setUniform program name d = do
   location <- GL.uniformLocation program name
@@ -233,3 +234,12 @@ toGlMatrix mat =
 
 lightPos :: Float -> V3 Float
 lightPos s = V3 (10 * cos s) 0 (10 * sin s)
+
+updateApp :: Float -> AppState -> AppState
+updateApp time (AppState (_, program) lamp) = AppState ([Chunk chunk True], program) lamp
+  where
+    chunk =
+        makeBlocks
+          (\v ->
+             let (V3 x y z) = v ^-^ V3 8 8 8
+              in (x * x + y * y + z * z) < min 4 (64 * sin time))
