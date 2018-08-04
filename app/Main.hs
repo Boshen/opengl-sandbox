@@ -53,7 +53,7 @@ main :: IO ()
 main = do
   SDL.initialize [SDL.InitVideo]
   SDL.HintRenderScaleQuality $= SDL.ScaleLinear
-  -- SDL.setMouseLocationMode SDL.RelativeLocation
+  SDL.setMouseLocationMode SDL.RelativeLocation
   do renderQuality <- SDL.get SDL.HintRenderScaleQuality
      when (renderQuality /= SDL.ScaleLinear) $
        putStrLn "Warning: Linear texture filtering not enabled!"
