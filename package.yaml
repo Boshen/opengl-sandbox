@@ -24,14 +24,15 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
+- Noise
 - OpenGL
 - bytestring
+- containers
+- lens
+- linear
+- mtl
 - sdl2
 - vector
-- linear
-- lens
-- containers
-- Noise
 
 library:
   source-dirs: src
