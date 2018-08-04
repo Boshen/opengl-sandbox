@@ -80,7 +80,7 @@ onDisplay app window camera lastFrame dataMap = do
   GL.viewport $=
     ( GL.Position 0 0
     , GL.Size (fromIntegral screenWidth) (fromIntegral screenHeight))
-  runReaderT (draw camera app) dataMap
+  app' <- runReaderT (draw camera app) dataMap
   SDL.glSwapWindow window
   events <- SDL.pollEvents
   currentFrame <- SDL.time
@@ -88,8 +88,8 @@ onDisplay app window camera lastFrame dataMap = do
       quit = QuitProgram `elem` actions
       deltaTime = currentFrame - lastFrame
       updatedCamera = updateCamera camera actions deltaTime
-      -- app'' = updateApp currentFrame app'
-  unless quit (onDisplay app window updatedCamera currentFrame dataMap)
+      app'' = updateApp currentFrame app'
+  unless quit (onDisplay app'' window updatedCamera currentFrame dataMap)
 
 bufferOffset :: Integral a => a -> Ptr b
 bufferOffset = plusPtr nullPtr . fromIntegral
@@ -99,14 +99,7 @@ initApp = do
   terrainData <- makeCubeProgram
   lampData <- makeLampProgram
   let map = Map.fromList [ ("terrain", terrainData) , ("lamp", lampData) ]
-      lampChunk = makeBlock (V3 0 0 0)
-      cubeChunk =
-        makeBlocks
-          (\v ->
-             let (V3 x y z) = v ^-^ V3 8 8 8
-              in (x * x + y * y + z * z) < 64)
-
-  return (AppState [Chunk cubeChunk True] [Chunk lampChunk True], map)
+  return (AppState [] [], map)
 
 makeCubeProgram :: IO GLData
 makeCubeProgram = do
@@ -136,20 +129,20 @@ makeLampProgram = do
 
 draw :: Camera -> AppState -> ReaderT GLDataMap IO AppState
 draw camera app = do
-  terrain <- drawChunk camera (terrain app)
-  lamp' <- drawLamp camera (lamp app)
-  return $ AppState terrain lamp'
+  terrain <- mapM (drawTerrain camera) (terrain app)
+  lamp <- mapM (drawLamp camera) (lamp app)
+  return $ AppState terrain lamp
 
-drawChunk :: Camera -> [Chunk] -> ReaderT GLDataMap IO [Chunk]
-drawChunk camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunks = do
+drawTerrain :: Camera -> Chunk -> ReaderT GLDataMap IO Chunk
+drawTerrain camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunk = do
   dataMap <- ask
   liftIO $ do
     seconds <- SDL.time :: IO Float
     let
         (GLData program vao vbo) = dataMap Map.! "terrain"
-        (Chunk chunkBlocks isChunkUpdated) = head chunks
+        (Chunk chunkBlocks chunkLocation isChunkUpdated) = chunk
         view = getViewMatrix camera
-        model = mkTransformationMat (identity :: M33 Float) (V3 0 0 0)
+        model = mkTransformationMat (identity :: M33 Float) chunkLocation
         projection =
           perspective
             (fov * pi / 180.0)
@@ -192,18 +185,18 @@ drawChunk camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunks = 
     GL.bindVertexArrayObject $= Just vao
     GL.drawArrays GL.Triangles 0 (fromIntegral $ div (length chunkBlocks) 6)
 
-    return [Chunk chunkBlocks False]
+    return $ Chunk chunkBlocks chunkLocation False
 
-drawLamp :: Camera -> [Chunk] -> ReaderT GLDataMap IO [Chunk]
-drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunks = do
+drawLamp :: Camera -> Chunk -> ReaderT GLDataMap IO Chunk
+drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunk = do
   dataMap <- ask
   liftIO $ do
     seconds <- SDL.time :: IO Float
     let
-        (GLData program vao vbo) = dataMap Map.! "terrain"
-        (Chunk chunkBlocks isChunkUpdated) = head chunks
+        (GLData program vao vbo) = dataMap Map.! "lamp"
+        (Chunk chunkBlocks chunkLocation isChunkUpdated) = chunk
         view = getViewMatrix camera
-        model = mkTransformationMat (identity :: M33 Float) (lightPos seconds)
+        model = mkTransformationMat (identity :: M33 Float) (lightPos seconds ^+^ chunkLocation)
         projection =
           perspective
             (fov * pi / 180.0)
@@ -233,7 +226,7 @@ drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunks = d
     setUniform program "projection" glProjectionMatrix
     GL.bindVertexArrayObject $= Just vao
     GL.drawArrays GL.Triangles 0 (fromIntegral $ div (length chunkBlocks) 6)
-    return [Chunk chunkBlocks False]
+    return $ Chunk chunkBlocks chunkLocation False
 
 setUniform program name d = do
   location <- GL.uniformLocation program name
@@ -250,11 +243,20 @@ toGlMatrix mat =
 lightPos :: Float -> V3 Float
 lightPos s = V3 (10 * cos s) 0 (10 * sin s)
 
--- updateApp :: Float -> AppState -> AppState
--- updateApp time (AppState (_, program) lamp) = AppState ([Chunk chunk True], program) lamp
-  -- where
-    -- chunk =
-        -- makeBlocks
-          -- (\v ->
-             -- let (V3 x y z) = v ^-^ V3 8 8 8
-              -- in (x * x + y * y + z * z) < min 4 (64 * sin time))
+updateApp :: Float -> AppState -> AppState
+updateApp time (AppState terrain lamp) = AppState terrain' lamp'
+  where
+    terrain' = updateTerrain terrain
+    lamp' = updateLamp lamp
+
+updateTerrain :: [Chunk] -> [Chunk]
+updateTerrain [] = do
+  x <- [0..10]
+  z <- [0..10]
+  return $ makeChunk (V3 (fromIntegral x) 0 (fromIntegral z))
+    where makeChunk v = Chunk (makeBlocks v) v True
+updateTerrain chunks = chunks
+
+updateLamp :: [Chunk] -> [Chunk]
+updateLamp [] = map (\z -> Chunk (makeBlock (V3 0 0 0)) (V3 0 0 z) True) [-2, 0, 4]
+updateLamp chunks = chunks

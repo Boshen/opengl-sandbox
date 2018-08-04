@@ -1,31 +1,31 @@
 module Chunk where
 
-import qualified Math.Noise as Noise
+import           Control.Monad
 import           Linear
 
 data Chunk = Chunk
   { chunkBlocks    :: [Float]
+  , chunkLocation  :: V3 Float
   , isChunkUpdated :: Bool
   }
 
-blockSize :: Int
-blockSize = 16
+blockSize :: Float
+blockSize = 8
 
-makeBlocks :: (V3 Float -> Bool) -> [Float]
-makeBlocks showBlock = concat blocks
+makeBlocks :: V3 Float -> [Float]
+makeBlocks (V3 dx dy dz) = concat blocks
   where
     blocks = do
-      x <- [0 .. blockSize - 1]
-      z <- [0 .. blockSize - 1]
-      y <- [0 .. height x z - 1]
+      x <- [0 .. round blockSize - 1]
+      y <- [0 .. round blockSize - 1]
+      z <- [0 .. round blockSize - 1]
+      guard $ y == 0
       let v = V3 (fromIntegral x) (fromIntegral y) (fromIntegral z)
-      return $ makeBlock (v ^/ fromIntegral blockSize)
-      where
-        height x z = round $ Noise.linear (fromIntegral x) (fromIntegral z) 0.5
+      return $ makeBlock (v ^/ blockSize)
 
 makeBlock :: V3 Float -> [Float]
 makeBlock (V3 x y z) =
-  let size = 1 / fromIntegral blockSize
+  let size = 1 / blockSize
       p1 = [x - size, y - size, z + size]
       p2 = [x + size, y - size, z + size]
       p3 = [x + size, y + size, z + size]
