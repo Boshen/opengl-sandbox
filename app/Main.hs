@@ -20,7 +20,7 @@ import           SDL                       (($=))
 import qualified SDL
 import           SDL.Video.OpenGL          (Mode (Normal))
 
-import           Action
+import           Motion
 import           Camera
 import           Chunk
 import           LoadShaders
@@ -92,7 +92,7 @@ onDisplay app window camera lastFrame dataMap = do
   let actions = parseEvents events
       quit = QuitProgram `elem` actions
       deltaTime = currentFrame - lastFrame
-      updatedCamera = updateCamera camera actions deltaTime
+      updatedCamera = updateCamera actions camera deltaTime
       app'' = updateApp currentFrame app'
   unless quit (onDisplay app'' window updatedCamera currentFrame dataMap)
 

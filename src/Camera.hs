@@ -5,10 +5,9 @@ module Camera
   , getViewMatrix
   ) where
 
-import           Data.Foldable
 import           Linear
 
-import           Action
+import           Motion
 
 data Camera = Camera
   { cameraPos   :: V3 Float
@@ -32,39 +31,38 @@ initialCamera =
 
 sensitivity = 0.05
 
-updateCamera :: Camera -> [ProgramAction] -> Float -> Camera
-updateCamera camera actions deltaTime =
-  foldl' (addCamera deltaTime) camera actions
+updateCamera :: [Motion] -> Camera -> Float -> Camera
+updateCamera actions = changeCamera (foldl sumActions (V3 0 0 0, V2 0 0) actions)
 
-addCamera :: Float -> Camera -> ProgramAction -> Camera
-addCamera deltaTime camera@(Camera pos front up yaw pitch fov) event =
-  let cameraSpeed = 10 * deltaTime
-   in case event of
-        ResetPosition -> initialCamera
-        Zoom dz -> Camera pos front up yaw pitch fov'
-          where fov' = max 1 . min 45 $ fov + dz * cameraSpeed * 100
-        MoveMouse dx dy -> Camera pos front' up yaw' pitch' fov
-          where yaw' = yaw + dx * sensitivity
-                pitch' = max (-89) . min 89 $ pitch + dy * sensitivity
-                radYaw = radians yaw'
-                radPitch = radians pitch'
-                front' =
-                  signorm $
-                  V3
-                    (cos radPitch * cos radYaw)
-                    (sin radPitch)
-                    (sin radYaw * cos radPitch)
-        _ -> Camera (V3 x y z) front up yaw pitch fov -- set y = 0 to keep at ground level
-          where (V3 x y z) =
-                  case event of
-                    MoveForward -> pos ^+^ (front ^* cameraSpeed)
-                    MoveBackward -> pos ^-^ (front ^* cameraSpeed)
-                    MoveUp -> pos ^+^ (up ^* cameraSpeed)
-                    MoveDown -> pos ^-^ (up ^* cameraSpeed)
-                    MoveLeft -> pos ^-^ signorm (cross front up) ^* cameraSpeed
-                    MoveRight -> pos ^+^ signorm (cross front up) ^* cameraSpeed
-                    MoveHalt -> pos
-                    _ -> pos
+sumActions :: (V3 Float, V2 Float) -> Motion -> (V3 Float, V2 Float)
+sumActions (pos, rot) action = case action of
+    MoveKeyboard pos' -> (pos ^+^ pos', rot)
+    MoveMouse rot' -> (pos, rot ^+^ rot')
+    _ -> (pos, rot)
+
+changeCamera :: (V3 Float, V2 Float) -> Camera -> Float  -> Camera
+changeCamera (pos', V2 rx ry) Camera{..} dt =
+  let cameraSpeed = 10 * dt
+      yaw = cameraYaw + rx * sensitivity
+      pitch = max (-89) . min 89 $ cameraPitch + ry * sensitivity
+      radYaw = radians yaw
+      radPitch = radians pitch
+      front = signorm $ V3
+        (cos radPitch * cos radYaw)
+        (sin radPitch)
+        (sin radYaw * cos radPitch)
+      right = signorm (cross cameraFront cameraUp)
+      pos = cameraPos ^+^ cameraSpeed *^ liftU2 (*) pos' (right + cameraUp + cameraFront)
+
+  in
+    Camera
+        { cameraPos = pos
+        , cameraFront = front
+        , cameraUp = cameraUp
+        , cameraYaw = yaw
+        , cameraPitch = pitch
+        , cameraFov = cameraFov
+        }
 
 radians deg = deg * pi / 180
 
