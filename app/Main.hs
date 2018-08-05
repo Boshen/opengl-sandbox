@@ -12,6 +12,8 @@ import           Foreign.Ptr
 import           Foreign.Storable
 
 import qualified Data.Foldable             as Foldable
+import           Data.Vector (Vector)
+import qualified Data.Vector as V
 import qualified Graphics.Rendering.OpenGL as GL
 import           Linear
 import           SDL                       (($=))
@@ -31,13 +33,16 @@ data GLData = GLData
 
 type GLDataMap = Map String GLData
 
-data AppState = AppState
-  { terrain :: [Chunk]
-  , lamp    :: [Chunk]
+data World = World
+  { terrain :: Vector Chunk
+  , lamp    :: Vector Chunk
   }
 
 screenWidth, screenHeight :: CInt
 (screenWidth, screenHeight) = (800, 600)
+
+worldSize :: Int
+worldSize = 3
 
 openGLConfig :: SDL.OpenGLConfig
 openGLConfig =
@@ -73,7 +78,7 @@ main = do
   SDL.destroyWindow window
   SDL.quit
 
-onDisplay :: AppState -> SDL.Window -> Camera -> Float -> GLDataMap -> IO ()
+onDisplay :: World -> SDL.Window -> Camera -> Float -> GLDataMap -> IO ()
 onDisplay app window camera lastFrame dataMap = do
   GL.clearColor $= GL.Color4 0.1 0.1 0.1 1
   GL.clear [GL.ColorBuffer, GL.DepthBuffer]
@@ -94,12 +99,12 @@ onDisplay app window camera lastFrame dataMap = do
 bufferOffset :: Integral a => a -> Ptr b
 bufferOffset = plusPtr nullPtr . fromIntegral
 
-initApp :: IO (AppState, GLDataMap)
+initApp :: IO (World, GLDataMap)
 initApp = do
   terrainData <- makeCubeProgram
   lampData <- makeLampProgram
   let map = Map.fromList [ ("terrain", terrainData) , ("lamp", lampData) ]
-  return (AppState [] [], map)
+  return (World V.empty V.empty, map)
 
 makeCubeProgram :: IO GLData
 makeCubeProgram = do
@@ -127,20 +132,21 @@ makeLampProgram = do
   mapM_ (GL.uniformLocation program) ["model", "view", "projection"]
   return $ GLData program vao vbo
 
-draw :: Camera -> AppState -> ReaderT GLDataMap IO AppState
+draw :: Camera -> World -> ReaderT GLDataMap IO World
 draw camera app = do
-  terrain <- mapM (drawTerrain camera) (terrain app)
-  lamp <- mapM (drawLamp camera) (lamp app)
-  return $ AppState terrain lamp
+  terrain <- V.imapM (drawTerrain camera) (terrain app)
+  lamp <- V.imapM (drawLamp camera) (lamp app)
+  return $ World terrain lamp
 
-drawTerrain :: Camera -> Chunk -> ReaderT GLDataMap IO Chunk
-drawTerrain camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunk = do
+drawTerrain :: Camera -> Int -> Chunk -> ReaderT GLDataMap IO Chunk
+drawTerrain camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) index chunk = do
   dataMap <- ask
   liftIO $ do
     seconds <- SDL.time :: IO Float
     let
         (GLData program vao vbo) = dataMap Map.! "terrain"
-        (Chunk chunkBlocks chunkLocation isChunkUpdated) = chunk
+        (Chunk chunkBlocks isChunkUpdated) = chunk
+        chunkLocation = V3 (fromIntegral (div index worldSize) / fromIntegral blockSize) 0 (fromIntegral (mod index worldSize) / fromIntegral blockSize)
         view = getViewMatrix camera
         model = mkTransformationMat (identity :: M33 Float) chunkLocation
         projection =
@@ -162,10 +168,11 @@ drawTerrain camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunk =
           aPos = GL.AttribLocation 0
           aNormal = GL.AttribLocation 1
           size = fromIntegral . sizeOf $ (0 :: Float)
+          vertices = createVertex chunkBlocks
       GL.bindVertexArrayObject $= Just vao
       GL.bindBuffer GL.ArrayBuffer $= Just vbo
-      withArray chunkBlocks $ \ptr -> do
-        let size = fromIntegral (length chunkBlocks * sizeOf (head chunkBlocks))
+      withArray vertices $ \ptr -> do
+        let size = fromIntegral (length vertices * sizeOf (head vertices))
         GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
       GL.vertexAttribPointer aPos $=
         ( GL.ToFloat
@@ -183,20 +190,20 @@ drawTerrain camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunk =
     setUniform program "lightColor" (GL.Vertex3 1 1 1 :: GL.Vertex3 Float)
     setUniform program "lightPos" light
     GL.bindVertexArrayObject $= Just vao
-    GL.drawArrays GL.Triangles 0 (fromIntegral $ div (length chunkBlocks) 6)
+    GL.drawArrays GL.Triangles 0 (fromIntegral $ V.length (V.filter showBlock chunkBlocks) * 36)
 
-    return $ Chunk chunkBlocks chunkLocation False
+    return $ Chunk chunkBlocks False
 
-drawLamp :: Camera -> Chunk -> ReaderT GLDataMap IO Chunk
-drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunk = do
+drawLamp :: Camera -> Int -> Chunk -> ReaderT GLDataMap IO Chunk
+drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) index chunk = do
   dataMap <- ask
   liftIO $ do
     seconds <- SDL.time :: IO Float
     let
         (GLData program vao vbo) = dataMap Map.! "lamp"
-        (Chunk chunkBlocks chunkLocation isChunkUpdated) = chunk
+        (Chunk chunkBlocks isChunkUpdated) = chunk
         view = getViewMatrix camera
-        model = mkTransformationMat (identity :: M33 Float) (lightPos seconds ^+^ chunkLocation)
+        model = mkTransformationMat (identity :: M33 Float) (lightPos seconds ^+^ V3 0 (fromIntegral index) 0)
         projection =
           perspective
             (fov * pi / 180.0)
@@ -212,21 +219,23 @@ drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) chunk = do
       let firstIndex = 0
           aPos = GL.AttribLocation 0
           size = fromIntegral . sizeOf $ (0 :: Float)
+          vertices = createVertex chunkBlocks
       GL.bindVertexArrayObject $= Just vao
       GL.bindBuffer GL.ArrayBuffer $= Just vbo
-      withArray chunkBlocks $ \ptr -> do
-        let size = fromIntegral (length chunkBlocks * sizeOf (head chunkBlocks))
+      withArray vertices $ \ptr -> do
+        let size = fromIntegral (length vertices * sizeOf (head vertices))
         GL.bufferData GL.ArrayBuffer $= (size, ptr, GL.StaticDraw)
       GL.vertexAttribPointer aPos $=
         ( GL.ToFloat
         , GL.VertexArrayDescriptor 3 GL.Float (6 * size) (bufferOffset firstIndex))
       GL.vertexAttribArray aPos $= GL.Enabled
+
     setUniform program "model" glModelMatrix
     setUniform program "view" glViewMatrix
     setUniform program "projection" glProjectionMatrix
     GL.bindVertexArrayObject $= Just vao
-    GL.drawArrays GL.Triangles 0 (fromIntegral $ div (length chunkBlocks) 6)
-    return $ Chunk chunkBlocks chunkLocation False
+    GL.drawArrays GL.Triangles 0 (fromIntegral $ length chunkBlocks * 36)
+    return $ Chunk chunkBlocks False
 
 setUniform program name d = do
   location <- GL.uniformLocation program name
@@ -243,20 +252,18 @@ toGlMatrix mat =
 lightPos :: Float -> V3 Float
 lightPos s = V3 (10 * cos s) 0 (10 * sin s)
 
-updateApp :: Float -> AppState -> AppState
-updateApp time (AppState terrain lamp) = AppState terrain' lamp'
+updateApp :: Float -> World -> World
+updateApp time (World terrain lamp) = World terrain' lamp'
   where
     terrain' = updateTerrain terrain
     lamp' = updateLamp lamp
 
-updateTerrain :: [Chunk] -> [Chunk]
-updateTerrain [] = do
-  x <- [0..10]
-  z <- [0..10]
-  return $ makeChunk (V3 (fromIntegral x) 0 (fromIntegral z))
-    where makeChunk v = Chunk (makeBlocks v) v True
-updateTerrain chunks = chunks
+updateTerrain :: Vector Chunk -> Vector Chunk
+updateTerrain chunks = if null chunks
+  then V.generate (worldSize * worldSize) (const createChunk)
+  else chunks
 
-updateLamp :: [Chunk] -> [Chunk]
-updateLamp [] = map (\z -> Chunk (makeBlock (V3 0 0 0)) (V3 0 0 z) True) [-2, 0, 4]
-updateLamp chunks = chunks
+updateLamp :: Vector Chunk -> Vector Chunk
+updateLamp chunks = if null chunks
+  then V.generate 1 (const createChunk)
+  else chunks
