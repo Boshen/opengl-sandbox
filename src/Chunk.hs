@@ -1,8 +1,8 @@
 module Chunk where
 
 import           Control.Monad
-import           Data.Vector (Vector)
-import qualified Data.Vector as V
+import           Data.Vector   (Vector)
+import qualified Data.Vector   as V
 import           Linear
 
 data BlockType = BlockEmpty | BlockSolid
@@ -25,7 +25,7 @@ makeBlocks :: Vector BlockType
 makeBlocks = V.generate chunkSize makeBlock
 
 makeBlock :: Int -> BlockType
-makeBlock i = if y == 1 then BlockSolid else BlockEmpty
+makeBlock i = if y == 0 then BlockSolid else BlockEmpty
   where
     (V3 x y z) = indexToPosition i
 

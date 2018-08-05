@@ -12,8 +12,8 @@ import           Foreign.Ptr
 import           Foreign.Storable
 
 import qualified Data.Foldable             as Foldable
-import           Data.Vector (Vector)
-import qualified Data.Vector as V
+import           Data.Vector               (Vector)
+import qualified Data.Vector               as V
 import qualified Graphics.Rendering.OpenGL as GL
 import           Linear
 import           SDL                       (($=))
@@ -139,7 +139,7 @@ draw camera app = do
   return $ World terrain lamp
 
 drawTerrain :: Camera -> Int -> Chunk -> ReaderT GLDataMap IO Chunk
-drawTerrain camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) index chunk = do
+drawTerrain camera@Camera{..} index chunk = do
   dataMap <- ask
   liftIO $ do
     seconds <- SDL.time :: IO Float
@@ -148,10 +148,10 @@ drawTerrain camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) index c
         (Chunk chunkBlocks isChunkUpdated) = chunk
         chunkLocation = V3 (fromIntegral (div index worldSize) / fromIntegral blockSize) 0 (fromIntegral (mod index worldSize) / fromIntegral blockSize)
         view = getViewMatrix camera
-        model = mkTransformationMat (identity :: M33 Float) chunkLocation
+        model = mkTransformationMat (identity :: M33 Float) chunkLocation !*! scaled (fromIntegral <$> V4 blockSize blockSize blockSize 1)
         projection =
           perspective
-            (fov * pi / 180.0)
+            (cameraFov * pi / 180.0)
             (fromIntegral screenWidth / fromIntegral screenHeight)
             0.1
             100.0
@@ -195,7 +195,7 @@ drawTerrain camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) index c
     return $ Chunk chunkBlocks False
 
 drawLamp :: Camera -> Int -> Chunk -> ReaderT GLDataMap IO Chunk
-drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) index chunk = do
+drawLamp camera@Camera{..}  index chunk = do
   dataMap <- ask
   liftIO $ do
     seconds <- SDL.time :: IO Float
@@ -206,7 +206,7 @@ drawLamp camera@(Camera cameraPos cameraFront cameraUp yaw pitch fov) index chun
         model = mkTransformationMat (identity :: M33 Float) (lightPos seconds ^+^ V3 0 (fromIntegral index) 0)
         projection =
           perspective
-            (fov * pi / 180.0)
+            (cameraFov * pi / 180.0)
             (fromIntegral screenWidth / fromIntegral screenHeight)
             0.1
             100.0
