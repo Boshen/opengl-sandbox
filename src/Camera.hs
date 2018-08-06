@@ -1,13 +1,9 @@
-module Camera
-  ( Camera(..)
-  , initialCamera
-  , updateCamera
-  , getViewMatrix
-  ) where
+{-# LANGUAGE RecordWildCards #-}
+
+module Camera where
 
 import           Linear
-
-import           Motion
+import           SDL
 
 data Camera = Camera
   { cameraPos   :: V3 Float
@@ -17,6 +13,13 @@ data Camera = Camera
   , cameraPitch :: Float
   , cameraFov   :: Float
   } deriving (Show)
+
+data Motion
+  = MoveKeyboard (V3 Float)
+  | MoveMouse (V2 Float)
+  | MoveHalt
+  | QuitProgram
+  deriving (Show, Eq)
 
 initialCamera :: Camera
 initialCamera =
@@ -29,33 +32,59 @@ initialCamera =
     , cameraFov = 45
     }
 
+parseEvents :: [Event] -> [Motion]
+parseEvents = map parseEvent
+
+parseEvent :: Event -> Motion
+parseEvent event =
+  case eventPayload event of
+    QuitEvent -> QuitProgram
+    KeyboardEvent d ->
+      case keysymKeycode . keyboardEventKeysym $ d of
+        KeycodeD      -> MoveKeyboard $ V3 1 0 0
+        KeycodeA      -> MoveKeyboard $ V3 (-1) 0 0
+        KeycodeW      -> MoveKeyboard $ V3 0 0 1
+        KeycodeS      -> MoveKeyboard $ V3 0 0 (-1)
+        KeycodeQ      -> MoveKeyboard $ V3 0 1 0
+        KeycodeE      -> MoveKeyboard $ V3 0 (-1) 0
+        KeycodeEscape -> QuitProgram
+        _             -> MoveHalt
+    MouseMotionEvent d ->
+      case mouseMotionEventRelMotion d of
+        V2 x y -> MoveMouse $ V2 (fromIntegral x) (fromIntegral $ -1 * y)
+    _ -> MoveHalt
+
+sensitivity :: Float
 sensitivity = 0.05
 
 updateCamera :: [Motion] -> Camera -> Float -> Camera
-updateCamera actions = changeCamera (foldl sumActions (V3 0 0 0, V2 0 0) actions)
+updateCamera actions = changeCamera (foldl sumMotion (V3 0 0 0, V2 0 0) actions)
 
-sumActions :: (V3 Float, V2 Float) -> Motion -> (V3 Float, V2 Float)
-sumActions (pos, rot) action = case action of
+sumMotion :: (V3 Float, V2 Float) -> Motion -> (V3 Float, V2 Float)
+sumMotion (pos, rot) action =
+  case action of
     MoveKeyboard pos' -> (pos ^+^ pos', rot)
-    MoveMouse rot' -> (pos, rot ^+^ rot')
-    _ -> (pos, rot)
+    MoveMouse rot'    -> (pos, rot ^+^ rot')
+    _                 -> (pos, rot)
 
-changeCamera :: (V3 Float, V2 Float) -> Camera -> Float  -> Camera
-changeCamera (pos', V2 rx ry) Camera{..} dt =
+changeCamera :: (V3 Float, V2 Float) -> Camera -> Float -> Camera
+changeCamera (pos', V2 rx ry) Camera {..} dt =
   let cameraSpeed = 10 * dt
       yaw = cameraYaw + rx * sensitivity
       pitch = max (-89) . min 89 $ cameraPitch + ry * sensitivity
       radYaw = radians yaw
       radPitch = radians pitch
-      front = signorm $ V3
-        (cos radPitch * cos radYaw)
-        (sin radPitch)
-        (sin radYaw * cos radPitch)
+      front =
+        signorm $
+        V3
+          (cos radPitch * cos radYaw)
+          (sin radPitch)
+          (sin radYaw * cos radPitch)
       right = signorm (cross cameraFront cameraUp)
-      pos = cameraPos ^+^ cameraSpeed *^ liftU2 (*) pos' (right + cameraUp + cameraFront)
-
-  in
-    Camera
+      pos =
+        cameraPos ^+^ cameraSpeed *^
+        liftU2 (*) pos' (right + cameraUp + cameraFront)
+   in Camera
         { cameraPos = pos
         , cameraFront = front
         , cameraUp = cameraUp
@@ -64,11 +93,12 @@ changeCamera (pos', V2 rx ry) Camera{..} dt =
         , cameraFov = cameraFov
         }
 
-radians deg = deg * pi / 180
-
 getViewMatrix :: Camera -> M44 Float
-getViewMatrix camera = Linear.lookAt pos (pos ^+^ front) up
-  where
-    pos = cameraPos camera
-    front = cameraFront camera
-    up = cameraUp camera
+getViewMatrix Camera {..} =
+  Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
+
+getProjectionMatrix :: Camera -> M44 Float
+getProjectionMatrix Camera {..} =
+  Linear.perspective (cameraFov * pi / 180.0) (800 / 600) 0.1 100.0
+
+radians deg = deg * pi / 180

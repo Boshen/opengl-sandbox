@@ -8,10 +8,8 @@ copyright:           "2018 Author name here"
 
 extra-source-files:
 - README.md
-- app/cube.vert
-- app/cube.frag
-- app/lamp.vert
-- app/lamp.frag
+- shaders/cube.vert
+- shaders/cube.frag
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -32,9 +30,6 @@ dependencies:
 - mtl
 - sdl2
 - vector
-
-default-extensions:
-  - RecordWildCards
 
 library:
   source-dirs: src
