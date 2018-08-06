@@ -55,16 +55,15 @@ showBlock BlockSolid = True
 vertex :: V3 Int -> [Float]
 vertex pos =
   let
-      (V3 x y z) =  (fromIntegral <$> pos) ^/ fromIntegral blockSize
-      size = 1 / fromIntegral blockSize
-      p1 = [x - size, y - size, z + size]
-      p2 = [x + size, y - size, z + size]
-      p3 = [x + size, y + size, z + size]
-      p4 = [x - size, y + size, z + size]
-      p5 = [x + size, y - size, z - size]
-      p6 = [x - size, y - size, z - size]
-      p7 = [x - size, y + size, z - size]
-      p8 = [x + size, y + size, z - size]
+      (V3 x y z) = fromIntegral <$> pos
+      p1 = [x - 1, y - 1, z + 1]
+      p2 = [x + 1, y - 1, z + 1]
+      p3 = [x + 1, y + 1, z + 1]
+      p4 = [x - 1, y + 1, z + 1]
+      p5 = [x + 1, y - 1, z - 1]
+      p6 = [x - 1, y - 1, z - 1]
+      p7 = [x - 1, y + 1, z - 1]
+      p8 = [x + 1, y + 1, z - 1]
       n1 = [0.0, 0.0, 1.0] -- front
       n2 = [0.0, 0.0, -1.0] -- back
       n3 = [1.0, 0.0, 0.0] -- right
@@ -101,6 +100,10 @@ makeChunk pos = do
                         , chunkPos = pos
                         , chunkVAO = vao
                         , chunkVBO = vbo
+                        , chunkModel =
+                            mkTransformationMat
+                              (identity :: M33 Float)
+                              ((/ fromIntegral blockSize) . fromIntegral <$> pos)
                         , isChunkUpdated = True
                         }
       put gameState { gameChunks = Map.insert pos chunk gameChunks }
@@ -115,11 +118,10 @@ renderChunks = do
 
   -- set uniforms
   liftIO $ do
-    let view = getViewMatrix gameCamera
-        projection = getProjectionMatrix gameCamera
-    glViewMatrix <- toGlMatrix view
+    let Camera{..} = gameCamera
+    glViewMatrix <- toGlMatrix cameraViewMatrix
     setUniform program "view" glViewMatrix
-    glProjectionMatrix <- toGlMatrix projection
+    glProjectionMatrix <- toGlMatrix cameraProjectionMatrix
     setUniform program "projection" glProjectionMatrix
     setUniform program "objectColor" (GL.Vertex3 1 0.5 0.31 :: GL.Vertex3 Float)
     setUniform program "lightColor" (GL.Vertex3 1 1 1 :: GL.Vertex3 Float)
@@ -135,8 +137,7 @@ renderChunk chunk@Chunk{..} = do
 
   -- reposition and rescale each chunk
   liftIO $ do
-    let model = mkTransformationMat (identity :: M33 Float) (fromIntegral <$> chunkPos) !*! scaled (fromIntegral <$> V4 blockSize blockSize blockSize 1)
-    glModelMatrix <- toGlMatrix model
+    glModelMatrix <- toGlMatrix chunkModel
     setUniform program "model" glModelMatrix
 
   -- if the chunk is updated,

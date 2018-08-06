@@ -12,6 +12,8 @@ data Camera = Camera
   , cameraYaw   :: Float
   , cameraPitch :: Float
   , cameraFov   :: Float
+  , cameraViewMatrix :: M44 Float
+  , cameraProjectionMatrix :: M44 Float
   } deriving (Show)
 
 data Motion
@@ -30,6 +32,8 @@ initialCamera =
     , cameraYaw = -90
     , cameraPitch = 0
     , cameraFov = 45
+    , cameraViewMatrix = identity :: M44 Float
+    , cameraProjectionMatrix = identity :: M44 Float
     }
 
 parseEvents :: [Event] -> [Motion]
@@ -72,8 +76,8 @@ changeCamera (pos', V2 rx ry) Camera {..} dt =
   let cameraSpeed = 10 * dt
       yaw = cameraYaw + rx * sensitivity
       pitch = max (-89) . min 89 $ cameraPitch + ry * sensitivity
-      radYaw = radians yaw
-      radPitch = radians pitch
+      radYaw = yaw * pi / 180
+      radPitch = pitch * pi / 180
       front =
         signorm $
         V3
@@ -91,14 +95,6 @@ changeCamera (pos', V2 rx ry) Camera {..} dt =
         , cameraYaw = yaw
         , cameraPitch = pitch
         , cameraFov = cameraFov
+        , cameraViewMatrix = Linear.lookAt pos (pos ^+^ front) cameraUp
+        , cameraProjectionMatrix = Linear.perspective (cameraFov * pi / 180.0) (800 / 600) 0.1 100.0
         }
-
-getViewMatrix :: Camera -> M44 Float
-getViewMatrix Camera {..} =
-  Linear.lookAt cameraPos (cameraPos ^+^ cameraFront) cameraUp
-
-getProjectionMatrix :: Camera -> M44 Float
-getProjectionMatrix Camera {..} =
-  Linear.perspective (cameraFov * pi / 180.0) (800 / 600) 0.1 100.0
-
-radians deg = deg * pi / 180
