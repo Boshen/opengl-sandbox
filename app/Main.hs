@@ -13,5 +13,6 @@ main = do
       gameCamera = initialCamera
     , gamePrograms = Map.empty
     , gameChunks = Map.empty
+    , gameMesh = Nothing
     }
   evalStateT game state

@@ -6,6 +6,7 @@ import           Control.Monad
 import           Control.Monad.State.Strict
 import qualified Data.Foldable              as Foldable
 import qualified Data.Map.Strict            as Map
+import           Data.Maybe                 (fromJust)
 import           Data.Vector                (Vector)
 import qualified Data.Vector                as V
 import           Foreign.Marshal.Array
@@ -43,14 +44,6 @@ indexToPosition i = V3 x y z
 positionToIndex :: V3 Int -> Int
 positionToIndex (V3 x y z) = x + blockSize * (y + blockSize * z)
 
-createVertex :: Vector BlockType -> [Float]
-createVertex blocks = concat $ do
-  x <- [0..blockSize - 1]
-  y <- [0..blockSize - 1]
-  z <- [0..blockSize - 1]
-  let pos = V3 x y z
-  return $ vertex pos
-
 createIndices :: Vector BlockType -> [GL.GLuint]
 createIndices blocks = map fromIntegral . concat $ do
   x <- [0..blockSize - 1]
@@ -65,31 +58,6 @@ showBlock :: BlockType -> Bool
 showBlock BlockEmpty = False
 showBlock BlockSolid = True
 
-vertex :: V3 Int -> [Float]
-vertex pos =
-  let (V3 x y z) = fromIntegral <$> pos
-      n1 = [0, 0, 1]
-      n2 = [0, 0, -1]
-      n3 = [1, 0, 0]
-      n4 = [-1, 0, 0]
-      n5 = [0, -1, 0]
-      n6 = [0, 1, 0]
-      p1 = [x + 0,  y + 1,  z + 1]
-      p2 = [x + 0,  y + 0,  z + 1]
-      p3 = [x + 1,  y + 1,  z + 1]
-      p4 = [x + 1,  y + 0,  z + 1]
-      p5 = [x + 0,  y + 0,  z + 0]
-      p6 = [x + 0,  y + 1,  z + 0]
-      p7 = [x + 1,  y + 0,  z + 0]
-      p8 = [x + 1,  y + 1,  z + 0]
-  in concat [ p1, n1 , p2, n1 , p3, n1 , p4, n1
-            , p5, n2 , p6, n2 , p7, n2 , p8, n2
-            , p4, n3 , p7, n3 , p3, n3 , p8, n3
-            , p2, n4 , p1, n4 , p5, n4 , p6, n4
-            , p2, n5 , p5, n5 , p4, n5 , p7, n5
-            , p6, n6 , p1, n6 , p8, n6 , p3, n6
-            ]
-
 makeChunks :: Game ()
 makeChunks = do
   gameState@GameState{..} <- get
@@ -103,16 +71,12 @@ makeChunk pos = do
   case Map.lookup pos gameChunks of
     Just chunk -> return ()
     Nothing -> do
-      vao <- GL.genObjectName
-      vbo <- GL.genObjectName
-      ebo <- GL.genObjectName
       let
         blocks = makeBlocks
         chunk = Chunk { chunkBlocks = blocks
                         , chunkPos = pos
-                        , chunkVAO = vao
-                        , chunkVBO = vbo
-                        , chunkEBO = ebo
+                        , chunkVAO = Nothing
+                        , chunkEBO = Nothing
                         , chunkLength = 0
                         , chunkModel =
                             mkTransformationMat
@@ -147,6 +111,8 @@ renderChunks = do
 renderChunk :: Chunk -> Game ()
 renderChunk chunk@Chunk{..} = do
   gameState@GameState{..} <- get
+  let Mesh{..} = fromJust gameMesh
+
   (Just program) <- GL.get GL.currentProgram
 
   -- reposition and rescale each chunk
@@ -154,39 +120,33 @@ renderChunk chunk@Chunk{..} = do
     glModelMatrix <- toGlMatrix chunkModel
     setUniform program "model" glModelMatrix
 
-  GL.bindVertexArrayObject $= Just chunkVAO
-  -- if the chunk is updated, setup its vertex data
-  -- otherwise redraw the chunk if its not updated
+  -- redraw the chunk if its not updated
+  -- otherwise create indices for drawing
+  GL.bindVertexArrayObject $= Just meshVAO
   if not isChunkUpdated
   then
-      -- draw the vertices
     liftIO $ GL.drawElements GL.Triangles (fromIntegral chunkLength) GL.UnsignedInt nullPtr
   else do
-    -- add buffer data
-    let vertices = createVertex chunkBlocks
-        indices = createIndices chunkBlocks
-        len = length indices -- * 6
-    liftIO $ do
-      GL.bindBuffer GL.ArrayBuffer $= Just chunkVBO
-      withArray vertices $ \ptr ->
-        GL.bufferData GL.ArrayBuffer $= (fromIntegral $ length vertices * 4, ptr, GL.StaticDraw)
+    let indices = createIndices chunkBlocks
+        len = length indices
 
-      GL.bindBuffer GL.ElementArrayBuffer $= Just chunkEBO
+    vao <- GL.genObjectName
+    ebo <- GL.genObjectName
+
+    liftIO $ do
+      GL.bindBuffer GL.ArrayBuffer $= Just meshVBO
+      GL.bindBuffer GL.ElementArrayBuffer $= Just ebo
       withArray indices $ \ptr ->
         GL.bufferData GL.ElementArrayBuffer $= (fromIntegral $ len * 4, ptr, GL.StaticDraw)
-
-      GL.vertexAttribArray (GL.AttribLocation 0) $= GL.Enabled
-      GL.vertexAttribPointer (GL.AttribLocation 0) $=
-        (GL.ToFloat, GL.VertexArrayDescriptor 3 GL.Float 24 (intPtrToPtr 0))
-
-      GL.vertexAttribArray (GL.AttribLocation 1) $= GL.Enabled
-      GL.vertexAttribPointer (GL.AttribLocation 1) $=
-        (GL.ToFloat, GL.VertexArrayDescriptor 3 GL.Float 24 (intPtrToPtr 12))
 
       GL.drawElements GL.Triangles (fromIntegral len) GL.UnsignedInt nullPtr
 
     -- no need to recreate buffer next time
-    let updatedChunk = chunk { isChunkUpdated = False, chunkLength = len }
+    let updatedChunk = chunk { isChunkUpdated = False
+                             , chunkVAO = Just vao
+                             , chunkEBO = Just ebo
+                             , chunkLength = len
+                            }
     put $ gameState { gameChunks = Map.insert chunkPos updatedChunk gameChunks }
 
 bufferOffset :: Integral a => a -> Ptr b

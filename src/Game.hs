@@ -13,6 +13,7 @@ import           SDL.Video.OpenGL           (Mode (Normal))
 
 import           Camera
 import           Chunk
+import           Mesh
 import           Program
 import           States
 
@@ -54,9 +55,14 @@ create = do
     ( GL.Position 0 0
     , GL.Size (fromIntegral screenWidth) (fromIntegral screenHeight))
 
-  gameState <- get
+  -- build mesh and programs beforehand so it can be reused
+  mesh <- buildMesh
   programs <- liftIO buildPrograms
-  put $ gameState { gamePrograms = programs }
+
+  gameState <- get
+  put $ gameState { gamePrograms = programs
+                  , gameMesh = Just mesh
+                  }
 
   return window
 
