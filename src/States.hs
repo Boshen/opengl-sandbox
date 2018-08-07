@@ -26,6 +26,8 @@ data Chunk = Chunk
   , chunkPos       :: V3 Int
   , chunkVAO       :: GL.VertexArrayObject
   , chunkVBO       :: GL.BufferObject
-  , chunkModel :: M44 Float
+  , chunkEBO       :: GL.BufferObject
+  , chunkLength    :: Int
+  , chunkModel     :: M44 Float
   , isChunkUpdated :: Bool
   } deriving (Show)
