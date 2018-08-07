@@ -16,12 +16,11 @@ import qualified Graphics.Rendering.OpenGL  as GL
 import           Linear
 import           SDL                        (($=))
 
-import           Camera
 import           Program
 import           States
 
 blockSize :: Int
-blockSize = 16
+blockSize = 1
 
 chunkSize :: Int
 chunkSize = blockSize * blockSize * blockSize
@@ -161,3 +160,17 @@ toGlMatrix mat =
       (pokeElemOff glPtr)
       [0 ..]
       (concat $ Foldable.toList <$> Foldable.toList mat)
+
+getBlock :: V3 Int -> Game (Maybe BlockType)
+getBlock pos = do
+  GameState{..} <- get
+
+  let cdiv = (`divMod` blockSize) <$> pos
+      cpos = fromIntegral . fst <$> cdiv
+      idx = positionToIndex $ snd <$> cdiv
+
+  case gameChunks Map.!? cpos of
+    Nothing -> return Nothing
+    Just Chunk{..} ->
+      let block = chunkBlocks V.! idx in
+      return $ if showBlock block then Just block else Nothing

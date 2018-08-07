@@ -2,33 +2,20 @@
 
 module Camera where
 
+import qualified Control.Monad.State.Strict as State
 import           Linear
 import           SDL
 
-data Camera = Camera
-  { cameraPos              :: V3 Float
-  , cameraFront            :: V3 Float
-  , cameraUp               :: V3 Float
-  , cameraRotation         :: V2 Float
-  , cameraFov              :: Float
-  , cameraViewMatrix       :: M44 Float
-  , cameraProjectionMatrix :: M44 Float
-  } deriving (Show)
-
-data Motion
-  = MoveKeyboard (V3 Float)
-  | MoveMouse (V2 Float)
-  | MoveHalt
-  | QuitProgram
-  deriving (Show, Eq)
+import           Chunk                      (getBlock)
+import           States
 
 initialCamera :: Camera
 initialCamera =
   Camera
-    { cameraPos = V3 0 10 5
+    { cameraPos = V3 0 2 0
     , cameraFront = V3 0 0 (-1)
     , cameraUp = V3 0 1 0
-    , cameraRotation = V2 0 (-pi / 4) -- pitch and yaw
+    , cameraRotation = V2 (pi / 2) 0 -- pitch and yaw
     , cameraFov = 45
     , cameraViewMatrix = identity :: M44 Float
     , cameraProjectionMatrix = identity :: M44 Float
@@ -56,19 +43,20 @@ parseEvent event =
         V2 x y -> MoveMouse $ V2 (fromIntegral x) (fromIntegral $ -1 * y)
     _ -> MoveHalt
 
-updateCamera :: [Motion] -> Camera -> Float -> Camera
-updateCamera actions camera dt =
-  foldl (changeCamera dt) camera (map motion actions)
+runCamera :: Float -> [Motion] -> Game ()
+runCamera dt = mapM_ (changeCamera dt . motion)
 
 motion :: Motion -> (V3 Float, V2 Float)
 motion (MoveKeyboard pos) = (pos, V2 0 0)
 motion (MoveMouse pos)    = (V3 0 0 0, pos)
 motion _                  = (V3 0 0 0, V2 0 0)
 
-changeCamera :: Float -> Camera -> (V3 Float, V2 Float) -> Camera
-changeCamera dt camera@Camera {..} (pos', V2 mx my) =
-  let cameraSpeed = 10 * dt
-      sensitivity = 0.2 * dt
+changeCamera :: Float -> (V3 Float, V2 Float) -> Game ()
+changeCamera dt (pos', V2 mx my) = do
+  gameState@GameState {..} <- State.get
+  let camera@Camera {..} = gameCamera
+      cameraSpeed = 10 * dt
+      sensitivity = 0.02 * dt
       V2 rx' ry' = cameraRotation
       rx = rx' + mx * sensitivity
       ry = max (-pi / 4) . min (pi / 4) $ ry' + my * sensitivity
@@ -77,13 +65,24 @@ changeCamera dt camera@Camera {..} (pos', V2 mx my) =
       pos =
         cameraPos ^+^ cameraSpeed *^
         liftU2 (*) pos' (right + cameraUp + cameraFront)
-   in camera
-        { cameraPos = pos
-        , cameraFront =
-            let (V3 x y z) = front
-             in V3 x 0 z
-        , cameraRotation = V2 rx ry
-        , cameraViewMatrix = Linear.lookAt pos (pos ^+^ front) cameraUp
-        , cameraProjectionMatrix =
-            Linear.perspective (pi / 4) (800 / 600) 0.1 100.0
-        }
+  pos <- checkCollision cameraPos pos
+  let updatedCamera =
+        camera
+          { cameraPos = pos
+          , cameraFront =
+              let (V3 x y z) = front
+               in V3 x 0 z
+          , cameraRotation = V2 rx ry
+          , cameraViewMatrix = Linear.lookAt pos (pos ^+^ front) cameraUp
+          , cameraProjectionMatrix =
+              Linear.perspective (pi / 4) (800 / 600) 0.1 100.0
+          }
+  State.put gameState {gameCamera = updatedCamera}
+
+checkCollision :: V3 Float -> V3 Float -> Game (V3 Float)
+checkCollision old pos = do
+  block <- getBlock (floor <$> pos)
+  return $
+    case block of
+      Nothing -> pos
+      Just _  -> old

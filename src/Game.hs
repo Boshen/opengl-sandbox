@@ -81,18 +81,9 @@ loop window lastFrame = do
   -- get actions from user
   actions <- liftIO $ parseEvents <$> SDL.pollEvents
 
-  -- update camera
-  (camera, currentFrame) <- liftIO $ do
-    currentFrame <- SDL.time
-    let
-      dt = currentFrame - lastFrame
-      camera = updateCamera actions gameCamera dt
-    return (camera, currentFrame)
-
-  -- update game state
-  put $ gameState {
-    gameCamera = camera
-  }
+  currentFrame <- SDL.time
+  let dt = currentFrame - lastFrame
+  runCamera dt actions
 
   makeChunks
   renderChunks

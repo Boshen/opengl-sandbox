@@ -7,8 +7,6 @@ import qualified Data.Vector                as V
 import qualified Graphics.Rendering.OpenGL  as GL
 import           Linear
 
-import           Camera
-
 data GameState = GameState
   { gameCamera   :: Camera
   , gamePrograms :: Map String GL.Program
@@ -37,3 +35,20 @@ data Mesh = Mesh
   { meshVAO    :: GL.VertexArrayObject
   , meshVBO    :: GL.BufferObject
   } deriving (Show)
+
+data Camera = Camera
+  { cameraPos              :: V3 Float
+  , cameraFront            :: V3 Float
+  , cameraUp               :: V3 Float
+  , cameraRotation         :: V2 Float
+  , cameraFov              :: Float
+  , cameraViewMatrix       :: M44 Float
+  , cameraProjectionMatrix :: M44 Float
+  } deriving (Show)
+
+data Motion
+  = MoveKeyboard (V3 Float)
+  | MoveMouse (V2 Float)
+  | MoveHalt
+  | QuitProgram
+  deriving (Show, Eq)
