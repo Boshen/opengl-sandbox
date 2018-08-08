@@ -148,9 +148,6 @@ renderChunk chunk@Chunk{..} = do
                             }
     put $ gameState { gameChunks = Map.insert chunkPos updatedChunk gameChunks }
 
-bufferOffset :: Integral a => a -> Ptr b
-bufferOffset = plusPtr nullPtr . fromIntegral
-
 floatSize = fromIntegral . sizeOf $ (0 :: Float)
 
 toGlMatrix :: M44 Float -> IO (GL.GLmatrix GL.GLfloat)
